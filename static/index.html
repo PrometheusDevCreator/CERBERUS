@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CERBERUS - Triadic Coordination System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Rajdhani:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0e27;
+            color: #e8e8e8;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: #0f1229;
+            border-bottom: 1px solid #1a1f3a;
+            padding: 1rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title {
+            font-family: 'Rajdhani', monospace;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #e07830;
+            letter-spacing: 0.15em;
+        }
+
+        .header-info {
+            font-size: 0.875rem;
+            color: #9ca3af;
+            display: flex;
+            gap: 1.5rem;
+        }
+
+        .session-badge {
+            background: #1a1f3a;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+        }
+
+        .connection-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
+
+        .connection-indicator.disconnected {
+            background: #ef4444;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .message-thread {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            background: #0a0e27;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.875rem;
+        }
+
+        .message-sender {
+            font-weight: 600;
+            font-family: 'Rajdhani', monospace;
+        }
+
+        .message-sender.matthew {
+            color: #39ff14;
+        }
+
+        .message-sender.sarah {
+            color: #e8e8e8;
+        }
+
+        .message-sender.claude {
+            color: #e07830;
+        }
+
+        .message-sender.system {
+            color: #9ca3af;
+        }
+
+        .message-timestamp {
+            color: #6b7280;
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .message-content {
+            background: #0f1229;
+            border-left: 3px solid #1a1f3a;
+            padding: 0.75rem 1rem;
+            border-radius: 0.375rem;
+            line-height: 1.5;
+            font-size: 0.95rem;
+        }
+
+        .message-sender.matthew ~ .message-content {
+            border-left-color: #39ff14;
+            background: rgba(57, 255, 20, 0.05);
+        }
+
+        .message-sender.sarah ~ .message-content {
+            border-left-color: #e8e8e8;
+            background: rgba(232, 232, 232, 0.05);
+        }
+
+        .message-sender.claude ~ .message-content {
+            border-left-color: #e07830;
+            background: rgba(224, 120, 48, 0.05);
+        }
+
+        .message-sender.system ~ .message-content {
+            border-left-color: #9ca3af;
+            background: rgba(156, 163, 175, 0.05);
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 0.25rem;
+            align-items: center;
+            color: #9ca3af;
+            font-size: 0.875rem;
+        }
+
+        .typing-dot {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: #9ca3af;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                opacity: 0.5;
+            }
+            30% {
+                opacity: 1;
+            }
+        }
+
+        .input-section {
+            background: #0f1229;
+            border-top: 1px solid #1a1f3a;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .routing-buttons {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .route-button {
+            flex: 1;
+            padding: 0.5rem 1rem;
+            border: 1px solid #1a1f3a;
+            background: transparent;
+            color: #9ca3af;
+            border-radius: 0.375rem;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .route-button:hover {
+            border-color: #e07830;
+            color: #e07830;
+            background: rgba(224, 120, 48, 0.1);
+        }
+
+        .route-button.active {
+            background: #e07830;
+            border-color: #e07830;
+            color: #0a0e27;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background: #1a1f3a;
+            border: 1px solid #2d3748;
+            border-radius: 0.375rem;
+            color: #e8e8e8;
+            padding: 0.75rem 1rem;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #e07830;
+        }
+
+        input[type="text"]::placeholder {
+            color: #6b7280;
+        }
+
+        button[type="submit"] {
+            background: #e07830;
+            border: none;
+            border-radius: 0.375rem;
+            color: #0a0e27;
+            padding: 0.75rem 1.5rem;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button[type="submit"]:hover:not(:disabled) {
+            background: #f59550;
+            transform: translateY(-2px);
+        }
+
+        button[type="submit"]:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status-bar {
+            background: #0f1229;
+            border-top: 1px solid #1a1f3a;
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: #6b7280;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .status-left {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .status-right {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        /* Scrollbar styling */
+        .message-thread::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .message-thread::-webkit-scrollbar-track {
+            background: #0a0e27;
+        }
+
+        .message-thread::-webkit-scrollbar-thumb {
+            background: #1a1f3a;
+            border-radius: 4px;
+        }
+
+        .message-thread::-webkit-scrollbar-thumb:hover {
+            background: #2d3748;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-title">CERBERUS</div>
+        <div class="header-info">
+            <div class="session-badge">Session: <span id="session-id">loading...</span></div>
+            <div><span class="connection-indicator" id="connection-indicator"></span>
+            <span id="connection-status">Connecting...</span></div>
+        </div>
+    </header>
+
+    <main>
+        <div class="message-thread" id="message-thread"></div>
+    </main>
+
+    <div class="input-section">
+        <div class="routing-buttons">
+            <button class="route-button active" data-target="both">Sarah & Claude</button>
+            <button class="route-button" data-target="sarah">Sarah Only</button>
+            <button class="route-button" data-target="claude">Claude Only</button>
+        </div>
+        <form id="message-form" class="input-group">
+            <input type="text" id="message-input" placeholder="Ask the agents..." required>
+            <button type="submit" id="send-button">Send</button>
+        </form>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-left">
+            <span id="message-count">0 messages</span>
+        </div>
+        <div class="status-right">
+            <span id="status-text">Ready</span>
+        </div>
+    </div>
+
+    <script>
+        class CerberusClient {
+            constructor() {
+                this.sessionId = null;
+                this.threadId = "thr_main";
+                this.ws = null;
+                this.messageCount = 0;
+                this.currentTarget = "both";
+                this.isConnected = false;
+
+                this.elements = {
+                    sessionId: document.getElementById("session-id"),
+                    messageThread: document.getElementById("message-thread"),
+                    messageInput: document.getElementById("message-input"),
+                    messageForm: document.getElementById("message-form"),
+                    sendButton: document.getElementById("send-button"),
+                    connectionIndicator: document.getElementById("connection-indicator"),
+                    connectionStatus: document.getElementById("connection-status"),
+                    messageCount: document.getElementById("message-count"),
+                    statusText: document.getElementById("status-text"),
+                };
+
+                this.initializeEventListeners();
+                this.initializeSession();
+            }
+
+            initializeEventListeners() {
+                // Routing buttons
+                document.querySelectorAll(".route-button").forEach((btn) => {
+                    btn.addEventListener("click", (e) => {
+                        document
+                            .querySelectorAll(".route-button")
+                            .forEach((b) => b.classList.remove("active"));
+                        btn.classList.add("active");
+                        this.currentTarget = btn.dataset.target;
+                    });
+                });
+
+                // Message form
+                this.elements.messageForm.addEventListener("submit", (e) => {
+                    e.preventDefault();
+                    this.sendMessage();
+                });
+            }
+
+            async initializeSession() {
+                try {
+                    // Create a new session
+                    const response = await fetch("/api/sessions", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ user_id: "matthew", user_label: "Matthew" }),
+                    });
+
+                    const data = await response.json();
+                    this.sessionId = data.session_id;
+                    this.elements.sessionId.textContent = this.sessionId.slice(-8);
+
+                    // Connect to WebSocket
+                    this.connectWebSocket();
+
+                    // Load existing events
+                    await this.loadExistingEvents();
+                } catch (error) {
+                    console.error("Failed to initialize session:", error);
+                    this.updateStatus("Failed to initialize session");
+                }
+            }
+
+            async loadExistingEvents() {
+                try {
+                    const response = await fetch(
+                        `/api/sessions/${this.sessionId}/events?thread_id=${this.threadId}&limit=100`
+                    );
+                    const data = await response.json();
+
+                    data.events.forEach((event) => {
+                        this.renderEvent(event);
+                    });
+
+                    this.autoScroll();
+                } catch (error) {
+                    console.error("Failed to load events:", error);
+                }
+            }
+
+            connectWebSocket() {
+                const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+                const wsUrl = `${protocol}//${window.location.host}/ws/${this.sessionId}`;
+
+                this.ws = new WebSocket(wsUrl);
+
+                this.ws.onopen = () => {
+                    this.isConnected = true;
+                    this.updateConnectionStatus(true);
+                    this.updateStatus("Connected");
+                    console.log("WebSocket connected");
+                };
+
+                this.ws.onmessage = (event) => {
+                    const eventData = JSON.parse(event.data);
+                    this.renderEvent(eventData);
+                    this.autoScroll();
+                };
+
+                this.ws.onerror = (error) => {
+                    console.error("WebSocket error:", error);
+                    this.updateStatus("WebSocket error");
+                };
+
+                this.ws.onclose = () => {
+                    this.isConnected = false;
+                    this.updateConnectionStatus(false);
+                    this.updateStatus("Disconnected");
+                    // Attempt to reconnect
+                    setTimeout(() => this.connectWebSocket(), 3000);
+                };
+            }
+
+            sendMessage() {
+                const text = this.elements.messageInput.value.trim();
+                if (!text || !this.isConnected) return;
+
+                const command = {
+                    command: "send_message",
+                    session_id: this.sessionId,
+                    thread_id: this.threadId,
+                    payload: {
+                        text: text,
+                        target: this.currentTarget,
+                        message_type: "query",
+                    },
+                };
+
+                this.ws.send(JSON.stringify(command));
+                this.elements.messageInput.value = "";
+                this.elements.sendButton.disabled = true;
+                this.updateStatus("Waiting for response...");
+
+                // Show typing indicators
+                if (this.currentTarget === "both" || this.currentTarget === "sarah") {
+                    this.addTypingIndicator("sarah");
+                }
+                if (this.currentTarget === "both" || this.currentTarget === "claude") {
+                    this.addTypingIndicator("claude");
+                }
+            }
+
+            renderEvent(event) {
+                const { source, payload, timestamp } = event;
+
+                // Map source to user display
+                const senderMap = {
+                    matthew: { name: "Matthew", class: "matthew" },
+                    sarah: { name: "Sarah", class: "sarah" },
+                    claude: { name: "Claude", class: "claude" },
+                    system: { name: "System", class: "system" },
+                };
+
+                const sender = senderMap[source.id] || {
+                    name: source.label || source.id,
+                    class: "system",
+                };
+
+                // Extract message content
+                let messageText = "";
+                if (payload && payload.content) {
+                    if (Array.isArray(payload.content) && payload.content.length > 0) {
+                        messageText = payload.content[0].text || payload.content[0];
+                    } else if (typeof payload.content === "string") {
+                        messageText = payload.content;
+                    }
+                }
+
+                if (!messageText) return;
+
+                // Remove typing indicator for this sender if it exists
+                const typingIndicator = document.querySelector(
+                    `.typing-indicator[data-sender="${source.id}"]`
+                );
+                if (typingIndicator) {
+                    typingIndicator.remove();
+                }
+
+                // Create message element
+                const messageEl = document.createElement("div");
+                messageEl.className = "message";
+
+                const header = document.createElement("div");
+                header.className = "message-header";
+
+                const senderName = document.createElement("span");
+                senderName.className = `message-sender ${sender.class}`;
+                senderName.textContent = sender.name;
+
+                const time = new Date(timestamp).toLocaleTimeString("en-US", {
+                    hour12: false,
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                });
+
+                const timeEl = document.createElement("span");
+                timeEl.className = "message-timestamp";
+                timeEl.textContent = time;
+
+                header.appendChild(senderName);
+                header.appendChild(timeEl);
+
+                const content = document.createElement("div");
+                content.className = "message-content";
+                content.textContent = messageText;
+
+                messageEl.appendChild(header);
+                messageEl.appendChild(content);
+
+                this.elements.messageThread.appendChild(messageEl);
+
+                this.messageCount++;
+                this.elements.messageCount.textContent =
+                    this.messageCount + " message" + (this.messageCount !== 1 ? "s" : "");
+
+                this.elements.sendButton.disabled = false;
+                this.updateStatus("Ready");
+            }
+
+            addTypingIndicator(sender) {
+                const typingDiv = document.createElement("div");
+                typingDiv.className = "typing-indicator";
+                typingDiv.setAttribute("data-sender", sender);
+                typingDiv.innerHTML = `
+                    <span>${sender === "sarah" ? "Sarah" : "Claude"} is thinking</span>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                `;
+
+                this.elements.messageThread.appendChild(typingDiv);
+                this.autoScroll();
+            }
+
+            autoScroll() {
+                this.elements.messageThread.scrollTop = this.elements.messageThread.scrollHeight;
+            }
+
+            updateConnectionStatus(isConnected) {
+                if (isConnected) {
+                    this.elements.connectionIndicator.classList.remove("disconnected");
+                    this.elements.connectionStatus.textContent = "Connected";
+                } else {
+                    this.elements.connectionIndicator.classList.add("disconnected");
+                    this.elements.connectionStatus.textContent = "Disconnected";
+                }
+            }
+
+            updateStatus(text) {
+                this.elements.statusText.textContent = text;
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener("DOMContentLoaded", () => {
+            new CerberusClient();
+        });
+    </script>
+</body>
+</html>
