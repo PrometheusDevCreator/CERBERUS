@@ -1,0 +1,1781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CERBERUS — Multi-Agent Command Interface</title>
+<!--
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║  CERBERUS — Triadic Multi-Agent Coordination Environment       ║
+  ║  Version: Concept Mockup 1.0                                   ║
+  ║  Brand Authority: Prometheus Dark Theme                        ║
+  ║                                                                ║
+  ║  SECTIONS:                                                     ║
+  ║  1. CSS Variables & Token System (Prometheus brand tokens)     ║
+  ║  2. Layout Shell (header, main grid, panels)                   ║
+  ║  3. Conversation Core (triadic message thread)                 ║
+  ║  4. Governance Controls (modes, turn handling, policies)       ║
+  ║  5. Memory / Context Panel (structured session context)        ║
+  ║  6. Status Bar (system heartbeat & audit)                      ║
+  ║  7. Interactive JavaScript (simulation engine)                 ║
+  ║                                                                ║
+  ║  Design: Command-grade, triadic, watchful, authoritative       ║
+  ║  Stack: Vanilla HTML/CSS/JS, no dependencies                   ║
+  ╚══════════════════════════════════════════════════════════════════╝
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+
+/* ══════════════════════════════════════════════════════════════
+   1. DESIGN TOKENS — Prometheus Dark Theme
+   ══════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Backgrounds */
+  --p-bg: #0a0a0a;
+  --p-bg-elevated: #0e0e0e;
+  --p-surface: #141414;
+  --p-card: #1a1a1a;
+
+  /* Borders */
+  --p-border: #2a2a2a;
+  --p-border-light: #333333;
+
+  /* Primary — Burnt Orange */
+  --p-primary: #c75f2a;
+  --p-primary-light: #e07830;
+  --p-primary-dark: #a04a20;
+  --p-primary-glow: rgba(199, 95, 42, 0.12);
+
+  /* Accent — Gold */
+  --p-accent: #d4a035;
+  --p-accent-light: #e8b94a;
+
+  /* Text */
+  --p-text: #c8c8c8;
+  --p-text-muted: #707070;
+  --p-text-bright: #f0f0f0;
+
+  /* Semantic */
+  --p-success: #2d8a4e;
+  --p-warning: #c79a2a;
+  --p-error: #b83a3a;
+  --p-info: #3a7ab8;
+
+  /* Agent Colours — Triadic Identity */
+  --agent-operator: #39ff14;     /* Matthew — luminous green */
+  --agent-sarah: #e8e8e8;       /* Sarah — white */
+  --agent-claude: #e07830;      /* Claude — burnt orange */
+  --agent-system: #707070;      /* System events — neutral */
+
+  /* Radii */
+  --rad-sm: 4px;
+  --rad-md: 6px;
+  --rad-lg: 10px;
+
+  /* Fonts */
+  --font-display: 'Rajdhani', sans-serif;
+  --font-body: 'Inter', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-body);
+  background: var(--p-bg);
+  color: var(--p-text);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--p-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--p-border-light); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   2. LAYOUT SHELL
+   ══════════════════════════════════════════════════════════════ */
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ── Top Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 52px;
+  background: var(--p-surface);
+  border-bottom: 1px solid var(--p-border);
+  position: relative;
+}
+.header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--p-primary-dark), var(--p-primary), var(--p-primary-light), var(--p-accent));
+  opacity: 0.3;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.logo-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo-icon {
+  width: 28px;
+  height: 28px;
+  position: relative;
+}
+.logo-icon svg { width: 100%; height: 100%; }
+.logo-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 18px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--p-text-bright);
+}
+.logo-version {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--p-text-muted);
+  margin-left: 4px;
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.session-id {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--p-text-muted);
+  padding: 3px 10px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ── Main Content Grid ── */
+.main-grid {
+  display: grid;
+  grid-template-columns: 220px 1fr 280px;
+  overflow: hidden;
+}
+
+/* ── Left Nav — Governance ── */
+.left-panel {
+  background: var(--p-surface);
+  border-right: 1px solid var(--p-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.panel-section {
+  padding: 16px;
+  border-bottom: 1px solid var(--p-border);
+}
+.panel-section-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--p-primary);
+  margin-bottom: 12px;
+}
+
+/* ── Right Panel — Memory / Context ── */
+.right-panel {
+  background: var(--p-surface);
+  border-left: 1px solid var(--p-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* ── Bottom Status Bar ── */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 32px;
+  background: var(--p-bg-elevated);
+  border-top: 1px solid var(--p-border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--p-text-muted);
+}
+.status-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.active { background: var(--p-success); }
+.status-dot.warning { background: var(--p-warning); }
+.status-dot.error { background: var(--p-error); }
+.status-dot.neutral { background: var(--p-text-muted); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   3. CONVERSATION CORE — Triadic Thread
+   ══════════════════════════════════════════════════════════════ */
+
+.conversation-area {
+  display: flex;
+  flex-direction: column;
+  background: var(--p-bg);
+  overflow: hidden;
+}
+
+/* Agent presence strip */
+.agent-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  height: 44px;
+  border-bottom: 1px solid var(--p-border);
+  background: var(--p-bg-elevated);
+}
+.agent-strip-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-right: 1px solid var(--p-border);
+  position: relative;
+}
+.agent-strip-item:last-child { border-right: none; }
+.agent-strip-item::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  border-radius: 1px;
+}
+.agent-strip-item[data-agent="operator"] { color: var(--agent-operator); }
+.agent-strip-item[data-agent="operator"]::after { background: var(--agent-operator); opacity: 0.3; }
+.agent-strip-item[data-agent="sarah"] { color: var(--agent-sarah); }
+.agent-strip-item[data-agent="sarah"]::after { background: var(--agent-sarah); opacity: 0.3; }
+.agent-strip-item[data-agent="claude"] { color: var(--agent-claude); }
+.agent-strip-item[data-agent="claude"]::after { background: var(--agent-claude); opacity: 0.3; }
+
+.agent-status-pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--p-success);
+}
+
+/* Message thread */
+.message-thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.message {
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--rad-md);
+  border: 1px solid var(--p-border);
+  transition: background 0.15s, border-color 0.15s;
+  cursor: pointer;
+  position: relative;
+  max-width: 90%;
+  align-self: flex-start;
+}
+.message:hover {
+  background: rgba(255,255,255,0.015);
+}
+.message.selected {
+  background: rgba(255,255,255,0.02);
+}
+
+/* Sender-coded full border */
+.message[data-from="operator"] { border-color: rgba(57, 255, 20, 0.2); }
+.message[data-from="operator"].selected { border-color: rgba(57, 255, 20, 0.45); }
+.message[data-from="sarah"] { border-color: rgba(232, 232, 232, 0.15); }
+.message[data-from="sarah"].selected { border-color: rgba(232, 232, 232, 0.35); }
+.message[data-from="claude"] { border-color: rgba(224, 120, 48, 0.25); }
+.message[data-from="claude"].selected { border-color: rgba(224, 120, 48, 0.5); }
+.message[data-from="system"] { border-color: var(--p-border); align-self: center; max-width: 70%; }
+
+.message-avatar {
+  display: none;
+}
+.message[data-from="operator"] .message-avatar { background: transparent; }
+.message[data-from="sarah"] .message-avatar { background: transparent; }
+.message[data-from="claude"] .message-avatar { background: transparent; }
+.message[data-from="system"] .message-avatar { background: transparent; }
+
+.message-body { flex: 1; min-width: 0; }
+
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.message-sender {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.message[data-from="operator"] .message-sender { color: var(--agent-operator); }
+.message[data-from="sarah"] .message-sender { color: var(--agent-sarah); }
+.message[data-from="claude"] .message-sender { color: var(--agent-claude); }
+.message[data-from="system"] .message-sender { color: var(--p-text-muted); }
+
+.message-routing {
+  display: none; /* Replaced by status dot */
+}
+.message-routing.broadcast { display: none; }
+
+.message-time {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--p-text-muted);
+  margin-left: auto;
+}
+
+.message-content {
+  font-size: 14.5px;
+  color: var(--p-text);
+  line-height: 1.6;
+}
+.message[data-from="system"] .message-content {
+  font-size: 12px;
+  color: var(--p-text-muted);
+  font-style: italic;
+}
+
+/* ── Status dots (replace text badges) ── */
+.message-type-badge {
+  display: none; /* Replaced by status dot */
+}
+
+.status-pip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: box-shadow 0.3s;
+}
+/* Dot colours */
+.pip-instruction { background: #9b59b6; }     /* Purple */
+.pip-challenge { background: #e05050; }        /* Red */
+.pip-broadcast { background: #4a90d9; }        /* Blue */
+.pip-query { background: #d4b83d; }            /* Yellow */
+.pip-response { background: var(--p-text-muted); opacity: 0.5; }  /* Neutral dim */
+.pip-summary { background: var(--p-text-muted); opacity: 0.5; }
+.pip-system { display: none; }
+
+/* Glow state — active until responded to */
+.status-pip.unresponded {
+  animation: pipGlow 2s infinite;
+}
+.pip-instruction.unresponded { box-shadow: 0 0 6px rgba(155, 89, 182, 0.6); }
+.pip-challenge.unresponded { box-shadow: 0 0 6px rgba(224, 80, 80, 0.6); }
+.pip-broadcast.unresponded { box-shadow: 0 0 6px rgba(74, 144, 217, 0.6); }
+.pip-query.unresponded { box-shadow: 0 0 6px rgba(212, 184, 61, 0.6); }
+
+@keyframes pipGlow {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+/* Message metadata drawer (shown on click) */
+.message-meta {
+  display: none;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--p-text-muted);
+  line-height: 1.8;
+}
+.message.selected .message-meta { display: block; }
+.meta-row { display: flex; gap: 8px; }
+.meta-label { color: var(--p-primary); min-width: 70px; }
+
+/* Typing indicator */
+.typing-indicator {
+  display: none;
+  align-self: flex-start;
+  padding: 10px 14px;
+  gap: 12px;
+  align-items: center;
+}
+.typing-indicator.active { display: flex; }
+.typing-dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.typing-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--p-text-muted);
+  animation: typingPulse 1.2s infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingPulse {
+  0%, 60%, 100% { opacity: 0.3; transform: scale(0.8); }
+  30% { opacity: 1; transform: scale(1); }
+}
+.typing-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--p-text-muted);
+}
+
+/* ── Input Area ── */
+.input-area {
+  padding: 12px 24px 16px;
+  background: var(--p-bg-elevated);
+  border-top: 1px solid var(--p-border);
+}
+.input-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.routing-selector {
+  display: flex;
+  gap: 2px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  padding: 2px;
+}
+.route-btn {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border: none;
+  background: transparent;
+  color: var(--p-text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+.route-btn:hover { color: var(--p-text); }
+.route-btn.active {
+  color: var(--p-text-bright);
+  background: var(--p-card);
+}
+.route-btn[data-route="sarah"].active { color: var(--agent-sarah); }
+.route-btn[data-route="claude"].active { color: var(--agent-claude); }
+.route-btn[data-route="both"].active { color: var(--p-accent); }
+
+.msg-type-selector {
+  display: flex;
+  gap: 2px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  padding: 2px;
+}
+.type-btn {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--p-text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+.type-btn:hover { color: var(--p-text); }
+.type-btn.active { background: var(--p-card); color: var(--p-text-bright); }
+
+.input-row {
+  display: flex;
+  gap: 8px;
+}
+.message-input {
+  flex: 1;
+  background: var(--p-card);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-md);
+  padding: 10px 14px;
+  color: var(--p-text-bright);
+  font-family: var(--font-body);
+  font-size: 13px;
+  resize: none;
+  outline: none;
+  min-height: 40px;
+  max-height: 120px;
+  transition: border-color 0.15s;
+}
+.message-input::placeholder { color: var(--p-text-muted); }
+.message-input:focus { border-color: var(--p-primary); }
+
+.send-btn {
+  padding: 10px 20px;
+  background: var(--p-primary);
+  color: var(--p-text-bright);
+  border: none;
+  border-radius: var(--rad-md);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.send-btn:hover { background: var(--p-primary-light); }
+.send-btn:active { background: var(--p-primary-dark); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   4. GOVERNANCE CONTROLS — Left Panel
+   ══════════════════════════════════════════════════════════════ */
+
+/* Mode selector */
+.mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.mode-btn {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 7px 8px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  color: var(--p-text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+.mode-btn:hover { border-color: var(--p-border-light); color: var(--p-text); }
+.mode-btn.active {
+  background: var(--p-primary-glow);
+  border-color: var(--p-primary);
+  color: var(--p-primary-light);
+}
+
+/* Toggle switches */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+.toggle-label {
+  font-size: 11px;
+  color: var(--p-text);
+}
+.toggle-switch {
+  width: 34px;
+  height: 18px;
+  background: var(--p-border);
+  border-radius: 9px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle-switch.on { background: var(--p-primary); }
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--p-text-bright);
+  transition: transform 0.2s;
+}
+.toggle-switch.on::after { transform: translateX(16px); }
+
+/* Challenge meter */
+.challenge-meter {
+  margin-top: 4px;
+}
+.meter-bar {
+  height: 4px;
+  background: var(--p-border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.meter-fill {
+  height: 100%;
+  background: var(--p-success);
+  border-radius: 2px;
+  transition: width 0.3s, background 0.3s;
+}
+.meter-fill.warning { background: var(--p-warning); }
+.meter-fill.critical { background: var(--p-error); }
+.meter-label {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--p-text-muted);
+  margin-top: 4px;
+}
+
+/* Agent controls */
+.agent-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  margin-bottom: 4px;
+}
+.agent-control-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.agent-control-name {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex: 1;
+}
+.agent-action-btn {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  background: transparent;
+  border: 1px solid var(--p-border);
+  border-radius: 3px;
+  color: var(--p-text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.agent-action-btn:hover { border-color: var(--p-border-light); color: var(--p-text); }
+.agent-action-btn.muted { border-color: var(--p-error); color: var(--p-error); background: rgba(184, 58, 58, 0.06); }
+
+/* Session controls */
+.session-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.session-btn {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  color: var(--p-text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+.session-btn:hover { border-color: var(--p-border-light); color: var(--p-text); }
+.session-btn.pause { border-color: var(--p-warning); color: var(--p-warning); }
+.session-btn.pause.active { background: rgba(199, 154, 42, 0.08); }
+.session-btn.terminate { border-color: var(--p-error); color: var(--p-error); }
+.session-btn.terminate:hover { background: rgba(184, 58, 58, 0.08); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   5. MEMORY / CONTEXT PANEL — Right Panel
+   ══════════════════════════════════════════════════════════════ */
+
+.memory-item {
+  padding: 8px 10px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  margin-bottom: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+/* Collapsible section header */
+.collapse-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  cursor: pointer;
+  margin-bottom: 4px;
+  transition: border-color 0.15s;
+}
+.collapse-header:hover { border-color: var(--p-border-light); }
+.collapse-header-label {
+  font-size: 11px;
+  color: var(--p-text);
+}
+.collapse-header-count {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--p-text-muted);
+}
+.collapse-chevron {
+  font-size: 10px;
+  color: var(--p-text-muted);
+  transition: transform 0.2s;
+  margin-left: 6px;
+}
+.collapse-header.open .collapse-chevron { transform: rotate(90deg); }
+.collapse-body {
+  display: none;
+  padding-left: 0;
+}
+.collapse-body.open { display: block; }
+.memory-item:hover { border-color: var(--p-border-light); }
+.memory-item.highlighted {
+  border-color: var(--p-primary);
+  background: var(--p-primary-glow);
+}
+.memory-item-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--p-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 3px;
+}
+.memory-item-content {
+  font-size: 11px;
+  color: var(--p-text);
+  line-height: 1.5;
+}
+.memory-item-time {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--p-text-muted);
+  margin-top: 4px;
+}
+
+.pin-icon {
+  float: right;
+  font-size: 10px;
+  color: var(--p-accent);
+  opacity: 0.6;
+}
+
+/* Event log mini */
+.event-log {
+  max-height: 160px;
+  overflow-y: auto;
+}
+.event-entry {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(42,42,42,0.3);
+  font-size: 10px;
+}
+.event-time {
+  font-family: var(--font-mono);
+  color: var(--p-text-muted);
+  flex-shrink: 0;
+  min-width: 48px;
+}
+.event-text { color: var(--p-text); }
+.event-text.policy { color: var(--p-warning); }
+.event-text.error { color: var(--p-error); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   6. HEADER BUTTONS & UTILITIES
+   ══════════════════════════════════════════════════════════════ */
+
+.header-btn {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  color: var(--p-text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.header-btn:hover { border-color: var(--p-border-light); color: var(--p-text); }
+.header-btn svg { vertical-align: middle; margin-right: 4px; }
+
+/* Turn indicator */
+.turn-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+}
+.turn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: turnPulse 2s infinite;
+}
+@keyframes turnPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+.turn-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--p-text-muted);
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   7. NOTIFICATION / SYSTEM TOAST
+   ══════════════════════════════════════════════════════════════ */
+
+.toast-container {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  padding: 10px 16px;
+  background: var(--p-card);
+  border: 1px solid var(--p-border);
+  border-left: 3px solid var(--p-warning);
+  border-radius: var(--rad-sm);
+  font-size: 11px;
+  color: var(--p-text);
+  max-width: 320px;
+  animation: toastIn 0.3s ease;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+.toast.policy { border-left-color: var(--p-warning); }
+.toast.info { border-left-color: var(--p-info); }
+.toast.error { border-left-color: var(--p-error); }
+.toast-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 3px;
+}
+.toast.policy .toast-title { color: var(--p-warning); }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ════════════════════════════════════════════
+       HEADER
+       ════════════════════════════════════════════ -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo-mark">
+        <!-- Cerberus icon — three-headed motif -->
+        <div class="logo-icon">
+          <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="14" cy="8" r="4" stroke="#e07830" stroke-width="1.5" fill="none"/>
+            <circle cx="7" cy="18" r="4" stroke="#6b8acd" stroke-width="1.5" fill="none"/>
+            <circle cx="21" cy="18" r="4" stroke="#5daa68" stroke-width="1.5" fill="none"/>
+            <line x1="12" y1="11" x2="9" y2="15" stroke="#2a2a2a" stroke-width="1"/>
+            <line x1="16" y1="11" x2="19" y2="15" stroke="#2a2a2a" stroke-width="1"/>
+            <line x1="11" y1="18" x2="17" y2="18" stroke="#2a2a2a" stroke-width="1"/>
+          </svg>
+        </div>
+        <span class="logo-title">CERBERUS</span>
+        <span class="logo-version">v0.1</span>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="turn-indicator" id="turnIndicator">
+        <div class="turn-dot" style="background: var(--agent-operator);"></div>
+        <span class="turn-label">OPERATOR TURN</span>
+      </div>
+      <span class="session-id" id="sessionId">SES-2026-0402-A7F3</span>
+    </div>
+    <div class="header-right">
+      <button class="header-btn" onclick="showToast('Transcript exported to session log.', 'info')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Export
+      </button>
+      <button class="header-btn" onclick="toggleEventLog()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Audit Log
+      </button>
+    </div>
+  </header>
+
+  <!-- ════════════════════════════════════════════
+       MAIN GRID
+       ════════════════════════════════════════════ -->
+  <main class="main-grid">
+
+    <!-- ── LEFT PANEL: Governance ── -->
+    <aside class="left-panel">
+
+      <!-- Communication Mode -->
+      <div class="panel-section">
+        <div class="panel-section-title">Communication Mode</div>
+        <div class="mode-grid" id="modeGrid">
+          <button class="mode-btn active" data-mode="direct" onclick="setMode(this)">Direct</button>
+          <button class="mode-btn" data-mode="broadcast" onclick="setMode(this)">Broadcast</button>
+          <button class="mode-btn" data-mode="structured" onclick="setMode(this)">Structured</button>
+          <button class="mode-btn" data-mode="gated" onclick="setMode(this)">Gated</button>
+        </div>
+      </div>
+
+      <!-- Policy Toggles -->
+      <div class="panel-section">
+        <div class="panel-section-title">Governance</div>
+        <div class="toggle-row">
+          <span class="toggle-label">Require Approval</span>
+          <div class="toggle-switch" id="toggleApproval" onclick="toggleSwitch(this, 'approval')"></div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Sequential Turns</span>
+          <div class="toggle-switch on" id="toggleTurns" onclick="toggleSwitch(this, 'turns')"></div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Transcript Logging</span>
+          <div class="toggle-switch on" id="toggleLogging" onclick="toggleSwitch(this, 'logging')"></div>
+        </div>
+      </div>
+
+      <!-- Challenge Limit -->
+      <div class="panel-section">
+        <div class="panel-section-title">Challenge Budget</div>
+        <div class="challenge-meter">
+          <div class="meter-bar">
+            <div class="meter-fill" id="challengeFill" style="width: 20%;"></div>
+          </div>
+          <div class="meter-label">
+            <span id="challengeCount">1 / 5</span>
+            <span>per session</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent Controls -->
+      <div class="panel-section">
+        <div class="panel-section-title">Agent Controls</div>
+        <div class="agent-control">
+          <div class="agent-control-dot" style="background: var(--agent-sarah);"></div>
+          <span class="agent-control-name" style="color: var(--agent-sarah);">Sarah</span>
+          <button class="agent-action-btn" id="muteSarah" onclick="toggleMute('sarah', this)">Mute</button>
+        </div>
+        <div class="agent-control">
+          <div class="agent-control-dot" style="background: var(--agent-claude);"></div>
+          <span class="agent-control-name" style="color: var(--agent-claude);">Claude</span>
+          <button class="agent-action-btn" id="muteClaude" onclick="toggleMute('claude', this)">Mute</button>
+        </div>
+      </div>
+
+      <!-- Session Controls -->
+      <div class="panel-section" style="border-bottom: none;">
+        <div class="panel-section-title">Session</div>
+        <div class="session-controls">
+          <button class="session-btn pause" id="pauseBtn" onclick="togglePause()">Pause Session</button>
+          <button class="session-btn terminate" onclick="terminateSession()">Terminate</button>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- ── CENTER: Conversation Core ── -->
+    <section class="conversation-area">
+
+      <!-- Agent presence strip -->
+      <div class="agent-strip">
+        <div class="agent-strip-item" data-agent="operator">
+          <div class="agent-status-pip"></div>
+          <span>Matthew</span>
+        </div>
+        <div class="agent-strip-item" data-agent="sarah">
+          <div class="agent-status-pip"></div>
+          <span>Sarah</span>
+        </div>
+        <div class="agent-strip-item" data-agent="claude">
+          <div class="agent-status-pip"></div>
+          <span>Claude</span>
+        </div>
+      </div>
+
+      <!-- Message thread -->
+      <div class="message-thread" id="messageThread">
+        <!-- Messages will be populated by JS -->
+      </div>
+
+      <!-- Typing indicator -->
+      <div class="typing-indicator" id="typingIndicator">
+        <div class="typing-dots">
+          <span></span><span></span><span></span>
+        </div>
+        <span class="typing-label" id="typingLabel">Claude is composing...</span>
+      </div>
+
+      <!-- Input area -->
+      <div class="input-area">
+        <div class="input-controls">
+          <div class="routing-selector" id="routingSelector">
+            <button class="route-btn" data-route="sarah" onclick="setRoute(this)">Sarah</button>
+            <button class="route-btn active" data-route="claude" onclick="setRoute(this)">Claude</button>
+            <button class="route-btn" data-route="both" onclick="setRoute(this)">Both</button>
+          </div>
+          <div class="msg-type-selector" id="msgTypeSelector">
+            <button class="type-btn active" data-type="instruction" onclick="setMsgType(this)">Instruct</button>
+            <button class="type-btn" data-type="query" onclick="setMsgType(this)">Query</button>
+            <button class="type-btn" data-type="challenge" onclick="setMsgType(this)">Challenge</button>
+          </div>
+        </div>
+        <div class="input-row">
+          <textarea class="message-input" id="messageInput" placeholder="Enter command or message..." rows="1" onkeydown="handleInputKey(event)"></textarea>
+          <button class="send-btn" onclick="sendMessage()">Send</button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ── RIGHT PANEL: Memory & Context ── -->
+    <aside class="right-panel">
+
+      <!-- Active Project -->
+      <div class="panel-section">
+        <div class="panel-section-title">Active Context</div>
+        <div class="memory-item highlighted" data-memory="project" onclick="highlightMemory(this)">
+          <div class="memory-item-label">Active Project</div>
+          <div class="memory-item-content">Prometheus Forge — CERBERUS Interface Design</div>
+          <div class="memory-item-time">Set 02 Apr 2026</div>
+        </div>
+      </div>
+
+      <!-- Standing Orders (collapsible) -->
+      <div class="panel-section">
+        <div class="panel-section-title">Standing Orders</div>
+        <div class="collapse-header" onclick="toggleCollapse(this)">
+          <span class="collapse-header-label">Active orders</span>
+          <span><span class="collapse-header-count">2 items</span><span class="collapse-chevron">&#9654;</span></span>
+        </div>
+        <div class="collapse-body">
+          <div class="memory-item" data-memory="order-1" onclick="highlightMemory(this)">
+            <span class="pin-icon">&#9670;</span>
+            <div class="memory-item-label">Policy</div>
+            <div class="memory-item-content">All design decisions require operator approval before implementation</div>
+          </div>
+          <div class="memory-item" data-memory="order-2" onclick="highlightMemory(this)">
+            <span class="pin-icon">&#9670;</span>
+            <div class="memory-item-label">Constraint</div>
+            <div class="memory-item-content">Claude does not write or modify code directly — produces tasking documents only</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Decisions (collapsible) -->
+      <div class="panel-section">
+        <div class="panel-section-title">Recent Decisions</div>
+        <div class="collapse-header" onclick="toggleCollapse(this)">
+          <span class="collapse-header-label">Session decisions</span>
+          <span><span class="collapse-header-count">2 items</span><span class="collapse-chevron">&#9654;</span></span>
+        </div>
+        <div class="collapse-body">
+          <div class="memory-item" data-memory="decision-1" onclick="highlightMemory(this)">
+            <div class="memory-item-label">Decision</div>
+            <div class="memory-item-content">CERBERUS mockup to use Prometheus dark theme as visual authority</div>
+            <div class="memory-item-time">Today 14:22</div>
+          </div>
+          <div class="memory-item" data-memory="decision-2" onclick="highlightMemory(this)">
+            <div class="memory-item-label">Decision</div>
+            <div class="memory-item-content">Triadic conversation model selected over dual-agent approach</div>
+            <div class="memory-item-time">Today 14:15</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Session Summary (collapsible) -->
+      <div class="panel-section">
+        <div class="panel-section-title">Session Summary</div>
+        <div class="collapse-header open" onclick="toggleCollapse(this)">
+          <span class="collapse-header-label">Auto-generated</span>
+          <span><span class="collapse-header-count">live</span><span class="collapse-chevron">&#9654;</span></span>
+        </div>
+        <div class="collapse-body open">
+          <div class="memory-item" data-memory="summary" onclick="highlightMemory(this)">
+            <div class="memory-item-label">Auto-Summary</div>
+            <div class="memory-item-content">Session initiated for CERBERUS interface design review. Sarah generated initial prompt specifications. Operator reviewing mockup concept with Claude.</div>
+            <div class="memory-item-time">Auto-updated</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Unresolved (collapsible) -->
+      <div class="panel-section">
+        <div class="panel-section-title">Unresolved</div>
+        <div class="collapse-header" onclick="toggleCollapse(this)">
+          <span class="collapse-header-label">Open questions</span>
+          <span><span class="collapse-header-count">2 items</span><span class="collapse-chevron">&#9654;</span></span>
+        </div>
+        <div class="collapse-body">
+          <div class="memory-item" data-memory="unresolved-1" onclick="highlightMemory(this)">
+            <div class="memory-item-label">Open Question</div>
+            <div class="memory-item-content">Technical requirements document for working version — not yet provided</div>
+          </div>
+          <div class="memory-item" data-memory="unresolved-2" onclick="highlightMemory(this)">
+            <div class="memory-item-label">Open Question</div>
+            <div class="memory-item-content">Agent memory persistence model — how should context carry across sessions?</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event Log (toggleable) -->
+      <div class="panel-section" id="eventLogPanel" style="display: none;">
+        <div class="panel-section-title">Event Log</div>
+        <div class="event-log" id="eventLog">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+    </aside>
+
+  </main>
+
+  <!-- ════════════════════════════════════════════
+       STATUS BAR
+       ════════════════════════════════════════════ -->
+  <footer class="status-bar">
+    <div class="status-group">
+      <div class="status-item">
+        <div class="status-dot active"></div>
+        <span>Sarah: connected</span>
+      </div>
+      <div class="status-item">
+        <div class="status-dot active"></div>
+        <span>Claude: connected</span>
+      </div>
+      <div class="status-item">
+        <div class="status-dot active" id="memoryDot"></div>
+        <span>Memory: active</span>
+      </div>
+      <div class="status-item">
+        <div class="status-dot active" id="policyDot"></div>
+        <span>Policy engine: active</span>
+      </div>
+    </div>
+    <div class="status-group">
+      <div class="status-item">
+        <span id="modeDisplay">Mode: DIRECT</span>
+      </div>
+      <div class="status-item">
+        <div class="status-dot active" id="loggingDot"></div>
+        <span id="loggingDisplay">Transcript: enabled</span>
+      </div>
+      <div class="status-item">
+        <span>Messages: <span id="msgCount">0</span></span>
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     7. JAVASCRIPT — Simulation Engine
+     ══════════════════════════════════════════════════════════════ -->
+<script>
+
+// ── State ──
+const state = {
+  route: 'claude',
+  msgType: 'instruction',
+  mode: 'direct',
+  paused: false,
+  approvalRequired: false,
+  loggingEnabled: true,
+  sequentialTurns: true,
+  challengeCount: 1,
+  challengeMax: 5,
+  messageCount: 0,
+  muted: { sarah: false, claude: false },
+  selectedMessage: null,
+  eventLogVisible: false,
+  events: []
+};
+
+// ── Message ID generator ──
+let msgIdCounter = 100;
+function nextMsgId() { return 'MSG-' + (++msgIdCounter).toString().padStart(4, '0'); }
+
+// ── Timestamp ──
+function now() {
+  const d = new Date();
+  return d.getHours().toString().padStart(2,'0') + ':' +
+         d.getMinutes().toString().padStart(2,'0') + ':' +
+         d.getSeconds().toString().padStart(2,'0');
+}
+
+// ── Log event ──
+function logEvent(text, type = '') {
+  state.events.push({ time: now(), text, type });
+  renderEventLog();
+}
+
+function renderEventLog() {
+  const log = document.getElementById('eventLog');
+  log.innerHTML = state.events.slice(-20).reverse().map(e =>
+    `<div class="event-entry">
+      <span class="event-time">${e.time}</span>
+      <span class="event-text ${e.type}">${e.text}</span>
+    </div>`
+  ).join('');
+}
+
+// ── Toast notifications ──
+function showToast(msg, type = 'info', title = '') {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `
+    ${title ? `<div class="toast-title">${title}</div>` : ''}
+    ${msg}
+  `;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+
+// ── Routing ──
+function setRoute(btn) {
+  document.querySelectorAll('.route-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.route = btn.dataset.route;
+  logEvent(`Routing changed to: ${state.route.toUpperCase()}`);
+}
+
+// ── Message type ──
+function setMsgType(btn) {
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.msgType = btn.dataset.type;
+}
+
+// ── Communication mode ──
+function setMode(btn) {
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.mode = btn.dataset.mode;
+  document.getElementById('modeDisplay').textContent = 'Mode: ' + state.mode.toUpperCase();
+  logEvent(`Communication mode set to ${state.mode.toUpperCase()}`, 'policy');
+
+  // In broadcast mode, auto-select "both" routing
+  if (state.mode === 'broadcast') {
+    document.querySelectorAll('.route-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.route-btn[data-route="both"]').classList.add('active');
+    state.route = 'both';
+  }
+
+  // In gated mode, auto-enable approval
+  if (state.mode === 'gated' && !state.approvalRequired) {
+    const toggle = document.getElementById('toggleApproval');
+    toggle.classList.add('on');
+    state.approvalRequired = true;
+    showToast('Approval requirement auto-enabled in Gated mode.', 'policy', 'Policy Engine');
+    logEvent('Approval requirement auto-enabled (gated mode)', 'policy');
+  }
+}
+
+// ── Toggle switches ──
+function toggleSwitch(el, setting) {
+  el.classList.toggle('on');
+  const isOn = el.classList.contains('on');
+
+  switch(setting) {
+    case 'approval':
+      state.approvalRequired = isOn;
+      logEvent(`Require Approval: ${isOn ? 'ENABLED' : 'DISABLED'}`, 'policy');
+      if (isOn) showToast('All agent responses now require operator approval before delivery.', 'policy', 'Policy Engine');
+      break;
+    case 'turns':
+      state.sequentialTurns = isOn;
+      logEvent(`Sequential Turns: ${isOn ? 'ENABLED' : 'DISABLED'}`);
+      break;
+    case 'logging':
+      state.loggingEnabled = isOn;
+      document.getElementById('loggingDisplay').textContent = `Transcript: ${isOn ? 'enabled' : 'disabled'}`;
+      document.getElementById('loggingDot').className = `status-dot ${isOn ? 'active' : 'warning'}`;
+      logEvent(`Transcript logging: ${isOn ? 'ENABLED' : 'DISABLED'}`, isOn ? '' : 'policy');
+      if (!isOn) showToast('Transcript logging has been disabled. This session will not be auditable.', 'policy', 'Audit Warning');
+      break;
+  }
+}
+
+// ── Agent mute ──
+function toggleMute(agent, btn) {
+  state.muted[agent] = !state.muted[agent];
+  btn.classList.toggle('muted');
+  btn.textContent = state.muted[agent] ? 'Unmute' : 'Mute';
+  logEvent(`${agent.charAt(0).toUpperCase() + agent.slice(1)} ${state.muted[agent] ? 'MUTED' : 'UNMUTED'}`, state.muted[agent] ? 'policy' : '');
+  if (state.muted[agent]) {
+    showToast(`${agent.charAt(0).toUpperCase() + agent.slice(1)} has been muted. No responses will be generated.`, 'policy', 'Agent Control');
+  }
+}
+
+// ── Pause / Resume ──
+function togglePause() {
+  state.paused = !state.paused;
+  const btn = document.getElementById('pauseBtn');
+  btn.textContent = state.paused ? 'Resume Session' : 'Pause Session';
+  btn.classList.toggle('active');
+  logEvent(`Session ${state.paused ? 'PAUSED' : 'RESUMED'}`, 'policy');
+  if (state.paused) showToast('Session paused. No agent activity will occur until resumed.', 'policy', 'Session Control');
+}
+
+// ── Terminate ──
+function terminateSession() {
+  showToast('Session termination requested. In production this would archive the transcript and disconnect agents.', 'error', 'Session Terminate');
+  logEvent('TERMINATE requested by operator', 'error');
+}
+
+// ── Event log toggle ──
+function toggleEventLog() {
+  state.eventLogVisible = !state.eventLogVisible;
+  document.getElementById('eventLogPanel').style.display = state.eventLogVisible ? 'block' : 'none';
+}
+
+// ── Memory highlighting ──
+function highlightMemory(el) {
+  document.querySelectorAll('.memory-item').forEach(m => m.classList.remove('highlighted'));
+  el.classList.add('highlighted');
+}
+
+// ── Collapsible sections ──
+function toggleCollapse(header) {
+  header.classList.toggle('open');
+  const body = header.nextElementSibling;
+  body.classList.toggle('open');
+}
+
+// ── Message click (metadata) ──
+function selectMessage(el) {
+  if (state.selectedMessage === el) {
+    el.classList.remove('selected');
+    state.selectedMessage = null;
+    return;
+  }
+  if (state.selectedMessage) state.selectedMessage.classList.remove('selected');
+  el.classList.add('selected');
+  state.selectedMessage = el;
+
+  // Mark as responded — remove glow from this message's dot
+  const pip = el.querySelector('.status-pip');
+  if (pip) pip.classList.remove('unresponded');
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// MESSAGE RENDERING
+// ══════════════════════════════════════════════════════════════
+
+function renderMessage(msg) {
+  const thread = document.getElementById('messageThread');
+
+  // Determine dot type: broadcast overrides message type
+  let pipClass = 'pip-' + msg.type;
+  if (msg.to === 'both') pipClass = 'pip-broadcast';
+
+  // Agent messages glow until operator responds (clicks)
+  const isAgentMsg = (msg.from === 'sarah' || msg.from === 'claude');
+  const glowClass = isAgentMsg ? ' unresponded' : '';
+
+  const el = document.createElement('div');
+  el.className = 'message';
+  el.dataset.from = msg.from;
+  el.dataset.msgId = msg.id;
+  el.onclick = function() { selectMessage(this); };
+
+  el.innerHTML = `
+    <div class="message-body">
+      <div class="message-header">
+        <span class="message-sender">${msg.senderName}</span>
+        <div class="status-pip ${pipClass}${glowClass}" title="${msg.type}${msg.to === 'both' ? ' (broadcast)' : ''}"></div>
+        <span class="message-time">${msg.time}</span>
+      </div>
+      <div class="message-content">${msg.content}</div>
+      <div class="message-meta">
+        <div class="meta-row"><span class="meta-label">MSG ID</span> ${msg.id}</div>
+        <div class="meta-row"><span class="meta-label">FROM</span> ${msg.senderName}</div>
+        <div class="meta-row"><span class="meta-label">TO</span> ${msg.to === 'both' ? 'Sarah + Claude (broadcast)' : msg.to}</div>
+        <div class="meta-row"><span class="meta-label">TYPE</span> ${msg.type}</div>
+        <div class="meta-row"><span class="meta-label">MODE</span> ${msg.mode}</div>
+        <div class="meta-row"><span class="meta-label">POLICY</span> ${state.approvalRequired ? 'approval-required' : 'open'}</div>
+        <div class="meta-row"><span class="meta-label">LOGGED</span> ${state.loggingEnabled ? 'yes' : 'no'}</div>
+      </div>
+    </div>
+  `;
+
+  thread.appendChild(el);
+  thread.scrollTop = thread.scrollHeight;
+  state.messageCount++;
+  document.getElementById('msgCount').textContent = state.messageCount;
+}
+
+function renderSystemMessage(text) {
+  renderMessage({
+    id: nextMsgId(),
+    from: 'system',
+    senderName: 'System',
+    to: 'all',
+    type: 'system',
+    content: text,
+    time: now(),
+    mode: state.mode
+  });
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// SEND MESSAGE & SIMULATED REPLIES
+// ══════════════════════════════════════════════════════════════
+
+function sendMessage() {
+  const input = document.getElementById('messageInput');
+  const text = input.value.trim();
+  if (!text) return;
+  if (state.paused) {
+    showToast('Session is paused. Resume before sending.', 'policy', 'Blocked');
+    return;
+  }
+
+  // Handle challenge type
+  if (state.msgType === 'challenge') {
+    state.challengeCount++;
+    updateChallengeMeter();
+    if (state.challengeCount > state.challengeMax) {
+      showToast('Challenge budget exhausted for this session. Further challenges require policy override.', 'error', 'Challenge Limit');
+      renderSystemMessage('Challenge budget exceeded. Governance event logged. Operator may request policy override.');
+      logEvent('CHALLENGE BUDGET EXCEEDED', 'error');
+    }
+  }
+
+  // Render operator message
+  renderMessage({
+    id: nextMsgId(),
+    from: 'operator',
+    senderName: 'Matthew',
+    to: state.route,
+    type: state.msgType,
+    content: text,
+    time: now(),
+    mode: state.mode
+  });
+
+  logEvent(`Operator message sent → ${state.route.toUpperCase()}`);
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Simulate agent replies
+  if (!state.paused) {
+    if ((state.route === 'claude' || state.route === 'both') && !state.muted.claude) {
+      simulateReply('claude', text);
+    }
+    if ((state.route === 'sarah' || state.route === 'both') && !state.muted.sarah) {
+      simulateReply('sarah', text);
+    }
+  }
+}
+
+function simulateReply(agent, prompt) {
+  const indicator = document.getElementById('typingIndicator');
+  const label = document.getElementById('typingLabel');
+
+  // Show typing
+  if (agent === 'claude') {
+    label.textContent = 'Claude is composing...';
+  } else {
+    label.textContent = 'Sarah is composing...';
+  }
+  indicator.classList.add('active');
+
+  // Update turn indicator
+  const turnDot = document.querySelector('.turn-dot');
+  const turnLabel = document.querySelector('.turn-label');
+  turnDot.style.background = agent === 'claude' ? 'var(--agent-claude)' : 'var(--agent-sarah)';
+  turnLabel.textContent = `${agent.toUpperCase()} RESPONDING`;
+
+  const delay = 1200 + Math.random() * 1800;
+
+  setTimeout(() => {
+    indicator.classList.remove('active');
+
+    // Reset turn to operator
+    turnDot.style.background = 'var(--agent-operator)';
+    turnLabel.textContent = 'OPERATOR TURN';
+
+    const reply = generateReply(agent, prompt);
+
+    if (state.approvalRequired) {
+      showToast(`${agent === 'claude' ? 'Claude' : 'Sarah'} response ready. Approval required before delivery.`, 'policy', 'Pending Approval');
+      logEvent(`${agent.toUpperCase()} response pending approval`, 'policy');
+      // Still show it but with a note
+      renderMessage({
+        id: nextMsgId(),
+        from: agent,
+        senderName: agent === 'claude' ? 'Claude' : 'Sarah',
+        to: 'operator',
+        type: reply.type,
+        content: reply.content + '<br><em style="font-size:10px;color:var(--p-warning);">[Pending operator approval]</em>',
+        time: now(),
+        mode: state.mode
+      });
+    } else {
+      renderMessage({
+        id: nextMsgId(),
+        from: agent,
+        senderName: agent === 'claude' ? 'Claude' : 'Sarah',
+        to: 'operator',
+        type: reply.type,
+        content: reply.content,
+        time: now(),
+        mode: state.mode
+      });
+    }
+
+    logEvent(`${agent.toUpperCase()} response delivered`);
+  }, delay);
+}
+
+// ── Reply generation (contextual simulation) ──
+function generateReply(agent, prompt) {
+  const lower = prompt.toLowerCase();
+
+  if (agent === 'claude') {
+    if (lower.includes('status') || lower.includes('progress')) {
+      return { type: 'response', content: 'Current session is active with all systems nominal. The CERBERUS mockup is under review. Memory subsystem is tracking three standing orders, two recent decisions, and two unresolved items. No policy violations logged.' };
+    }
+    if (lower.includes('challenge') || lower.includes('disagree') || lower.includes('concern')) {
+      return { type: 'challenge', content: 'Acknowledged. I would note that the current approach assumes a synchronous turn model. If we anticipate high-frequency multi-agent exchanges, an event-driven architecture with message queuing may be more resilient than strict sequential processing. This warrants discussion before implementation.' };
+    }
+    if (lower.includes('summary') || lower.includes('summarise') || lower.includes('summarize')) {
+      return { type: 'summary', content: 'Session summary: The operator initiated a CERBERUS interface design session. Key decisions include adopting the Prometheus dark theme as visual authority and selecting a triadic conversation model. Two items remain unresolved: the technical requirements document and the memory persistence model.' };
+    }
+    if (lower.includes('plan') || lower.includes('next step')) {
+      return { type: 'response', content: 'Recommended next steps: First, the operator should review the mockup and provide feedback on the triadic layout approach. Second, Sarah should draft the technical requirements document for the working version. Third, we should resolve the memory persistence question before proceeding to implementation.' };
+    }
+    return { type: 'response', content: 'Understood. I\'ve noted the instruction and will factor it into the current workflow. If there are dependencies I should be aware of, please flag them — otherwise I\'ll proceed on the basis of current standing orders and session context.' };
+  }
+
+  if (agent === 'sarah') {
+    if (lower.includes('status') || lower.includes('progress')) {
+      return { type: 'response', content: 'The initial specification prompt has been delivered. I\'m tracking the mockup development and will flag any deviations from the requirements I drafted. The technical requirements document is on my list — I can start that once we\'ve confirmed the mockup direction.' };
+    }
+    if (lower.includes('review') || lower.includes('feedback')) {
+      return { type: 'response', content: 'I\'ll review the current output against the specification. Key checkpoints: triadic layout clarity, governance control visibility, memory panel structure, and adherence to the Prometheus visual doctrine. I\'ll provide structured feedback once the mockup is ready for assessment.' };
+    }
+    if (lower.includes('concern') || lower.includes('risk')) {
+      return { type: 'challenge', content: 'One concern: the mockup spec is ambitious for a single-file deliverable. We should ensure the governance controls aren\'t just decorative — even in mockup form, the interaction model should demonstrate the command logic convincingly, or it won\'t serve as a credible precursor to the working build.' };
+    }
+    return { type: 'response', content: 'Noted. I\'ll update my tracking against this input. If this affects any of the standing orders or project constraints, let me know and I\'ll adjust accordingly.' };
+  }
+
+  return { type: 'response', content: 'Acknowledged.' };
+}
+
+// ── Challenge meter ──
+function updateChallengeMeter() {
+  const pct = Math.min((state.challengeCount / state.challengeMax) * 100, 100);
+  const fill = document.getElementById('challengeFill');
+  fill.style.width = pct + '%';
+  fill.className = 'meter-fill' + (pct >= 80 ? ' critical' : pct >= 60 ? ' warning' : '');
+  document.getElementById('challengeCount').textContent = `${state.challengeCount} / ${state.challengeMax}`;
+}
+
+// ── Input handling ──
+function handleInputKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+  // Auto-resize textarea
+  const el = e.target;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// INITIALISATION — Seed the conversation
+// ══════════════════════════════════════════════════════════════
+
+function init() {
+  // Log session start
+  logEvent('Session SES-2026-0402-A7F3 initiated');
+  logEvent('Operator: Matthew — connected');
+  logEvent('Sarah — connected');
+  logEvent('Claude — connected');
+  logEvent('Memory subsystem: ACTIVE');
+  logEvent('Policy engine: ACTIVE');
+  logEvent('Transcript logging: ENABLED');
+
+  // Seed conversation with realistic sample messages
+  const seed = [
+    {
+      from: 'system', senderName: 'System', to: 'all', type: 'system',
+      content: 'Session initiated. All agents connected. Policy engine active. Transcript logging enabled.',
+      time: '14:12:03'
+    },
+    {
+      from: 'operator', senderName: 'Matthew', to: 'both', type: 'instruction',
+      content: 'Right. Sarah has drafted the CERBERUS interface specification. Claude, I want you to build a high-fidelity interactive mockup from it. Sarah, stand by to review the output against your spec.',
+      time: '14:12:18'
+    },
+    {
+      from: 'sarah', senderName: 'Sarah', to: 'operator', type: 'response',
+      content: 'Standing by. I\'ll review against seven key criteria: triadic layout legibility, governance control depth, memory panel structure, status visibility, audit trail presence, visual adherence to Prometheus brand doctrine, and technical realism for future conversion.',
+      time: '14:12:45'
+    },
+    {
+      from: 'claude', senderName: 'Claude', to: 'operator', type: 'response',
+      content: 'Understood. I have the Prometheus dark theme tokens from our previous sessions and Sarah\'s specification. I\'ll produce a single-file HTML mockup with embedded CSS and JavaScript — no external dependencies. Confirming: this is a concept preview designed to map directly to a future working build.',
+      time: '14:13:02'
+    },
+    {
+      from: 'operator', senderName: 'Matthew', to: 'claude', type: 'instruction',
+      content: 'Correct. The mockup should feel like a serious product concept, not a throwaway prototype. Use the Prometheus visual doctrine — deep darks, burnt orange accents, Rajdhani display font, crisp hierarchy. Make it feel like a command environment.',
+      time: '14:13:30'
+    },
+    {
+      from: 'claude', senderName: 'Claude', to: 'operator', type: 'response',
+      content: 'Confirmed. I\'ll prioritise clarity, restraint, and operational authority in the design. The triadic model will use a unified thread with clear speaker separation, routing visibility, and message metadata. Governance controls will be functional enough to demonstrate the command logic convincingly.',
+      time: '14:13:55'
+    },
+    {
+      from: 'system', senderName: 'System', to: 'all', type: 'system',
+      content: 'Standing order applied: All design decisions require operator approval before implementation.',
+      time: '14:14:00'
+    },
+    {
+      from: 'sarah', senderName: 'Sarah', to: 'both', type: 'challenge',
+      content: 'One flag before you start: the specification calls for both a triadic column layout option and a unified thread option. I\'d recommend committing to one approach in the mockup rather than trying to demonstrate both — it\'ll be more convincing as a product concept if it commits to a single interaction model.',
+      time: '14:14:22'
+    },
+    {
+      from: 'operator', senderName: 'Matthew', to: 'both', type: 'instruction',
+      content: 'Agreed. Claude, go with the unified thread approach but make speaker separation and routing absolutely crystal clear. The three-column layout can be explored in a separate iteration if needed.',
+      time: '14:14:50'
+    },
+    {
+      from: 'claude', senderName: 'Claude', to: 'operator', type: 'response',
+      content: 'Understood. Unified thread with triadic agent presence strip, colour-coded speakers, explicit routing badges, and message metadata on click. Building now.',
+      time: '14:15:08'
+    }
+  ];
+
+  seed.forEach(msg => {
+    msg.id = nextMsgId();
+    msg.mode = 'direct';
+    renderMessage(msg);
+  });
+
+  // Focus input
+  document.getElementById('messageInput').focus();
+}
+
+// Run on load
+document.addEventListener('DOMContentLoaded', init);
+
+</script>
+
+</body>
+</html>
