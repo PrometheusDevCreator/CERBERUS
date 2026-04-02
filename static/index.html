@@ -1,624 +1,1560 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CERBERUS - Triadic Coordination System</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Rajdhani:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CERBERUS — Multi-Agent Command Interface</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
 
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #0a0e27;
-            color: #e8e8e8;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
+/* ══════════════════════════════════════════════════════════════
+   1. DESIGN TOKENS — Prometheus Dark Theme
+   ══════════════════════════════════════════════════════════════ */
 
-        header {
-            background: #0f1229;
-            border-bottom: 1px solid #1a1f3a;
-            padding: 1rem 1.5rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        .header-title {
-            font-family: 'Rajdhani', monospace;
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #e07830;
-            letter-spacing: 0.15em;
-        }
+:root {
+  /* Backgrounds */
+  --p-bg: #0a0a0a;
+  --p-bg-elevated: #0e0e0e;
+  --p-surface: #141414;
+  --p-card: #1a1a1a;
 
-        .header-info {
-            font-size: 0.875rem;
-            color: #9ca3af;
-            display: flex;
-            gap: 1.5rem;
-        }
+  /* Borders */
+  --p-border: #2a2a2a;
+  --p-border-light: #333333;
 
-        .session-badge {
-            background: #1a1f3a;
-            padding: 0.5rem 1rem;
-            border-radius: 0.375rem;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.75rem;
-        }
+  /* Primary — Burnt Orange */
+  --p-primary: #c75f2a;
+  --p-primary-light: #e07830;
+  --p-primary-dark: #a04a20;
+  --p-primary-glow: rgba(199, 95, 42, 0.12);
 
-        .connection-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #10b981;
-            display: inline-block;
-            margin-right: 0.5rem;
-        }
+  /* Accent — Gold */
+  --p-accent: #d4a035;
+  --p-accent-light: #e8b94a;
 
-        .connection-indicator.disconnected {
-            background: #ef4444;
-        }
+  /* Text */
+  --p-text: #c8c8c8;
+  --p-text-muted: #707070;
+  --p-text-bright: #f0f0f0;
 
-        main {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
+  /* Semantic */
+  --p-success: #2d8a4e;
+  --p-warning: #c79a2a;
+  --p-error: #b83a3a;
+  --p-info: #3a7ab8;
 
-        .message-thread {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            background: #0a0e27;
-        }
+  /* Agent Colours — Triadic Identity */
+  --agent-operator: #39ff14;
+  --agent-sarah: #e8e8e8;
+  --agent-claude: #e07830;
+  --agent-system: #707070;
 
-        .message {
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-            margin-bottom: 0.5rem;
-        }
+  /* Radii */
+  --rad-sm: 4px;
+  --rad-md: 6px;
+  --rad-lg: 10px;
 
-        .message-header {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            font-size: 0.875rem;
-        }
+  /* Fonts */
+  --font-display: 'Rajdhani', sans-serif;
+  --font-body: 'Inter', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
 
-        .message-sender {
-            font-weight: 600;
-            font-family: 'Rajdhani', monospace;
-        }
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-body);
+  background: var(--p-bg);
+  color: var(--p-text);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
 
-        .message-sender.matthew {
-            color: #39ff14;
-        }
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--p-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--p-border-light); }
 
-        .message-sender.sarah {
-            color: #e8e8e8;
-        }
+/* ══════════════════════════════════════════════════════════════
+   2. LAYOUT SHELL
+   ══════════════════════════════════════════════════════════════ */
 
-        .message-sender.claude {
-            color: #e07830;
-        }
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  width: 100vw;
+}
 
-        .message-sender.system {
-            color: #9ca3af;
-        }
+/* ── Top Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 52px;
+  background: var(--p-surface);
+  border-bottom: 1px solid var(--p-border);
+  position: relative;
+}
+.header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--p-primary-dark), var(--p-primary), var(--p-primary-light), var(--p-accent));
+  opacity: 0.3;
+}
 
-        .message-timestamp {
-            color: #6b7280;
-            font-size: 0.75rem;
-            font-family: 'JetBrains Mono', monospace;
-        }
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.logo-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo-icon {
+  width: 28px;
+  height: 28px;
+  position: relative;
+}
+.logo-icon svg { width: 100%; height: 100%; }
+.logo-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 18px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--p-text-bright);
+}
+.logo-version {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--p-text-muted);
+  margin-left: 4px;
+}
 
-        .message-content {
-            background: #0f1229;
-            border-left: 3px solid #1a1f3a;
-            padding: 0.75rem 1rem;
-            border-radius: 0.375rem;
-            line-height: 1.5;
-            font-size: 0.95rem;
-        }
+.header-center {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.session-id {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--p-text-muted);
+  padding: 3px 10px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+}
 
-        .message-sender.matthew ~ .message-content {
-            border-left-color: #39ff14;
-            background: rgba(57, 255, 20, 0.05);
-        }
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
-        .message-sender.sarah ~ .message-content {
-            border-left-color: #e8e8e8;
-            background: rgba(232, 232, 232, 0.05);
-        }
+/* ── Main Content Grid ── */
+.main-grid {
+  display: grid;
+  grid-template-columns: 220px 1fr 280px;
+  overflow: hidden;
+}
 
-        .message-sender.claude ~ .message-content {
-            border-left-color: #e07830;
-            background: rgba(224, 120, 48, 0.05);
-        }
+/* ── Left Nav — Governance ── */
+.left-panel {
+  background: var(--p-surface);
+  border-right: 1px solid var(--p-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.panel-section {
+  padding: 16px;
+  border-bottom: 1px solid var(--p-border);
+}
+.panel-section-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--p-primary);
+  margin-bottom: 12px;
+}
 
-        .message-sender.system ~ .message-content {
-            border-left-color: #9ca3af;
-            background: rgba(156, 163, 175, 0.05);
-        }
+/* ── Right Panel — Memory / Context ── */
+.right-panel {
+  background: var(--p-surface);
+  border-left: 1px solid var(--p-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
 
-        .typing-indicator {
-            display: flex;
-            gap: 0.25rem;
-            align-items: center;
-            color: #9ca3af;
-            font-size: 0.875rem;
-        }
+/* ── Bottom Status Bar ── */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 32px;
+  background: var(--p-bg-elevated);
+  border-top: 1px solid var(--p-border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--p-text-muted);
+}
+.status-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.active { background: var(--p-success); }
+.status-dot.warning { background: var(--p-warning); }
+.status-dot.error { background: var(--p-error); }
+.status-dot.neutral { background: var(--p-text-muted); }
 
-        .typing-dot {
-            width: 4px;
-            height: 4px;
-            border-radius: 50%;
-            background: #9ca3af;
-            animation: typing 1.4s infinite;
-        }
+/* ══════════════════════════════════════════════════════════════
+   3. CONVERSATION CORE — Triadic Thread
+   ══════════════════════════════════════════════════════════════ */
 
-        .typing-dot:nth-child(2) {
-            animation-delay: 0.2s;
-        }
+.conversation-area {
+  display: flex;
+  flex-direction: column;
+  background: var(--p-bg);
+  overflow: hidden;
+}
 
-        .typing-dot:nth-child(3) {
-            animation-delay: 0.4s;
-        }
+/* Agent presence strip */
+.agent-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  height: 44px;
+  border-bottom: 1px solid var(--p-border);
+  background: var(--p-bg-elevated);
+}
+.agent-strip-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-right: 1px solid var(--p-border);
+  position: relative;
+}
+.agent-strip-item:last-child { border-right: none; }
+.agent-strip-item::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  border-radius: 1px;
+}
+.agent-strip-item[data-agent="operator"] { color: var(--agent-operator); }
+.agent-strip-item[data-agent="operator"]::after { background: var(--agent-operator); opacity: 0.3; }
+.agent-strip-item[data-agent="sarah"] { color: var(--agent-sarah); }
+.agent-strip-item[data-agent="sarah"]::after { background: var(--agent-sarah); opacity: 0.3; }
+.agent-strip-item[data-agent="claude"] { color: var(--agent-claude); }
+.agent-strip-item[data-agent="claude"]::after { background: var(--agent-claude); opacity: 0.3; }
 
-        @keyframes typing {
-            0%, 60%, 100% {
-                opacity: 0.5;
-            }
-            30% {
-                opacity: 1;
-            }
-        }
+.agent-status-pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--p-success);
+}
 
-        .input-section {
-            background: #0f1229;
-            border-top: 1px solid #1a1f3a;
-            padding: 1.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
+/* Message thread */
+.message-thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 
-        .routing-buttons {
-            display: flex;
-            gap: 0.75rem;
-        }
+.message {
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--rad-md);
+  border: 1px solid var(--p-border);
+  transition: background 0.15s, border-color 0.15s;
+  cursor: pointer;
+  position: relative;
+  max-width: 90%;
+  align-self: flex-start;
+}
+.message:hover {
+  background: rgba(255,255,255,0.015);
+}
+.message.selected {
+  background: rgba(255,255,255,0.02);
+}
 
-        .route-button {
-            flex: 1;
-            padding: 0.5rem 1rem;
-            border: 1px solid #1a1f3a;
-            background: transparent;
-            color: #9ca3af;
-            border-radius: 0.375rem;
-            font-family: 'Inter', sans-serif;
-            font-size: 0.875rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
+/* Sender-coded full border */
+.message[data-from="operator"] { border-color: rgba(57, 255, 20, 0.2); }
+.message[data-from="operator"].selected { border-color: rgba(57, 255, 20, 0.45); }
+.message[data-from="sarah"] { border-color: rgba(232, 232, 232, 0.15); }
+.message[data-from="sarah"].selected { border-color: rgba(232, 232, 232, 0.35); }
+.message[data-from="claude"] { border-color: rgba(224, 120, 48, 0.25); }
+.message[data-from="claude"].selected { border-color: rgba(224, 120, 48, 0.5); }
+.message[data-from="system"] { border-color: var(--p-border); align-self: center; max-width: 70%; }
 
-        .route-button:hover {
-            border-color: #e07830;
-            color: #e07830;
-            background: rgba(224, 120, 48, 0.1);
-        }
+.message-avatar {
+  display: none;
+}
 
-        .route-button.active {
-            background: #e07830;
-            border-color: #e07830;
-            color: #0a0e27;
-        }
+.message-body { flex: 1; min-width: 0; }
 
-        .input-group {
-            display: flex;
-            gap: 0.75rem;
-        }
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.message-sender {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.message[data-from="operator"] .message-sender { color: var(--agent-operator); }
+.message[data-from="sarah"] .message-sender { color: var(--agent-sarah); }
+.message[data-from="claude"] .message-sender { color: var(--agent-claude); }
+.message[data-from="system"] .message-sender { color: var(--p-text-muted); }
 
-        input[type="text"] {
-            flex: 1;
-            background: #1a1f3a;
-            border: 1px solid #2d3748;
-            border-radius: 0.375rem;
-            color: #e8e8e8;
-            padding: 0.75rem 1rem;
-            font-family: 'Inter', sans-serif;
-            font-size: 0.95rem;
-            transition: border-color 0.2s;
-        }
+.message-routing {
+  display: none;
+}
+.message-routing.broadcast { display: none; }
 
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #e07830;
-        }
+.message-time {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--p-text-muted);
+  margin-left: auto;
+}
 
-        input[type="text"]::placeholder {
-            color: #6b7280;
-        }
+.message-content {
+  font-size: 14.5px;
+  color: var(--p-text);
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+.message[data-from="system"] .message-content {
+  font-size: 12px;
+  color: var(--p-text-muted);
+  font-style: italic;
+}
 
-        button[type="submit"] {
-            background: #e07830;
-            border: none;
-            border-radius: 0.375rem;
-            color: #0a0e27;
-            padding: 0.75rem 1.5rem;
-            font-family: 'Inter', sans-serif;
-            font-size: 0.875rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
+/* ── Status dots (replace text badges) ── */
+.message-type-badge {
+  display: none;
+}
 
-        button[type="submit"]:hover:not(:disabled) {
-            background: #f59550;
-            transform: translateY(-2px);
-        }
+.status-pip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: box-shadow 0.3s;
+}
+.pip-instruction { background: #9b59b6; }
+.pip-challenge { background: #e05050; }
+.pip-broadcast { background: #4a90d9; }
+.pip-query { background: #d4b83d; }
+.pip-response { background: var(--p-text-muted); opacity: 0.5; }
+.pip-summary { background: var(--p-text-muted); opacity: 0.5; }
+.pip-system { display: none; }
 
-        button[type="submit"]:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+/* Glow state — active until responded to */
+.status-pip.unresponded {
+  animation: pipGlow 2s infinite;
+}
+.pip-instruction.unresponded { box-shadow: 0 0 6px rgba(155, 89, 182, 0.6); }
+.pip-challenge.unresponded { box-shadow: 0 0 6px rgba(224, 80, 80, 0.6); }
+.pip-broadcast.unresponded { box-shadow: 0 0 6px rgba(74, 144, 217, 0.6); }
+.pip-query.unresponded { box-shadow: 0 0 6px rgba(212, 184, 61, 0.6); }
 
-        .status-bar {
-            background: #0f1229;
-            border-top: 1px solid #1a1f3a;
-            padding: 0.75rem 1.5rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 0.75rem;
-            color: #6b7280;
-            font-family: 'JetBrains Mono', monospace;
-        }
+@keyframes pipGlow {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
 
-        .status-left {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-        }
+/* Message metadata drawer (shown on click) */
+.message-meta {
+  display: none;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--p-text-muted);
+  line-height: 1.8;
+}
+.message.selected .message-meta { display: block; }
+.meta-row { display: flex; gap: 8px; }
+.meta-label { color: var(--p-primary); min-width: 70px; }
 
-        .status-right {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }
+/* Typing indicator */
+.typing-indicator {
+  display: none;
+  align-self: flex-start;
+  padding: 10px 14px;
+  gap: 12px;
+  align-items: center;
+}
+.typing-indicator.active { display: flex; }
+.typing-dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.typing-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--p-text-muted);
+  animation: typingPulse 1.2s infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingPulse {
+  0%, 60%, 100% { opacity: 0.3; transform: scale(0.8); }
+  30% { opacity: 1; transform: scale(1); }
+}
+.typing-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--p-text-muted);
+}
 
-        /* Scrollbar styling */
-        .message-thread::-webkit-scrollbar {
-            width: 8px;
-        }
+/* ── Input Area ── */
+.input-area {
+  padding: 12px 24px 16px;
+  background: var(--p-bg-elevated);
+  border-top: 1px solid var(--p-border);
+}
+.input-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.routing-selector {
+  display: flex;
+  gap: 2px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  padding: 2px;
+}
+.route-btn {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border: none;
+  background: transparent;
+  color: var(--p-text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+.route-btn:hover { color: var(--p-text); }
+.route-btn.active {
+  color: var(--p-text-bright);
+  background: var(--p-card);
+}
+.route-btn[data-route="sarah"].active { color: var(--agent-sarah); }
+.route-btn[data-route="claude"].active { color: var(--agent-claude); }
+.route-btn[data-route="both"].active { color: var(--p-accent); }
 
-        .message-thread::-webkit-scrollbar-track {
-            background: #0a0e27;
-        }
+.msg-type-selector {
+  display: flex;
+  gap: 2px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  padding: 2px;
+}
+.type-btn {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--p-text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+.type-btn:hover { color: var(--p-text); }
+.type-btn.active { background: var(--p-card); color: var(--p-text-bright); }
 
-        .message-thread::-webkit-scrollbar-thumb {
-            background: #1a1f3a;
-            border-radius: 4px;
-        }
+.input-row {
+  display: flex;
+  gap: 8px;
+}
+.message-input {
+  flex: 1;
+  background: var(--p-card);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-md);
+  padding: 10px 14px;
+  color: var(--p-text-bright);
+  font-family: var(--font-body);
+  font-size: 13px;
+  resize: none;
+  outline: none;
+  min-height: 40px;
+  max-height: 120px;
+  transition: border-color 0.15s;
+}
+.message-input::placeholder { color: var(--p-text-muted); }
+.message-input:focus { border-color: var(--p-primary); }
 
-        .message-thread::-webkit-scrollbar-thumb:hover {
-            background: #2d3748;
-        }
-    </style>
+.send-btn {
+  padding: 10px 20px;
+  background: var(--p-primary);
+  color: var(--p-text-bright);
+  border: none;
+  border-radius: var(--rad-md);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.send-btn:hover { background: var(--p-primary-light); }
+.send-btn:active { background: var(--p-primary-dark); }
+.send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ══════════════════════════════════════════════════════════════
+   4. GOVERNANCE CONTROLS — Left Panel
+   ══════════════════════════════════════════════════════════════ */
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.mode-btn {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 7px 8px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  color: var(--p-text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+.mode-btn:hover { border-color: var(--p-border-light); color: var(--p-text); }
+.mode-btn.active {
+  background: var(--p-primary-glow);
+  border-color: var(--p-primary);
+  color: var(--p-primary-light);
+}
+
+/* Toggle switches */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+.toggle-label {
+  font-size: 11px;
+  color: var(--p-text);
+}
+.toggle-switch {
+  width: 34px;
+  height: 18px;
+  background: var(--p-border);
+  border-radius: 9px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle-switch.on { background: var(--p-primary); }
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--p-text-bright);
+  transition: transform 0.2s;
+}
+.toggle-switch.on::after { transform: translateX(16px); }
+
+/* Challenge meter */
+.challenge-meter {
+  margin-top: 4px;
+}
+.meter-bar {
+  height: 4px;
+  background: var(--p-border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.meter-fill {
+  height: 100%;
+  background: var(--p-success);
+  border-radius: 2px;
+  transition: width 0.3s, background 0.3s;
+}
+.meter-fill.warning { background: var(--p-warning); }
+.meter-fill.critical { background: var(--p-error); }
+.meter-label {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--p-text-muted);
+  margin-top: 4px;
+}
+
+/* Agent controls */
+.agent-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  margin-bottom: 4px;
+}
+.agent-control-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.agent-control-name {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex: 1;
+}
+.agent-action-btn {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  background: transparent;
+  border: 1px solid var(--p-border);
+  border-radius: 3px;
+  color: var(--p-text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.agent-action-btn:hover { border-color: var(--p-border-light); color: var(--p-text); }
+.agent-action-btn.muted { border-color: var(--p-error); color: var(--p-error); background: rgba(184, 58, 58, 0.06); }
+
+/* Session controls */
+.session-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.session-btn {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  color: var(--p-text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+.session-btn:hover { border-color: var(--p-border-light); color: var(--p-text); }
+.session-btn.pause { border-color: var(--p-warning); color: var(--p-warning); }
+.session-btn.pause.active { background: rgba(199, 154, 42, 0.08); }
+.session-btn.terminate { border-color: var(--p-error); color: var(--p-error); }
+.session-btn.terminate:hover { background: rgba(184, 58, 58, 0.08); }
+
+/* ══════════════════════════════════════════════════════════════
+   5. MEMORY / CONTEXT PANEL — Right Panel
+   ══════════════════════════════════════════════════════════════ */
+
+.memory-item {
+  padding: 8px 10px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  margin-bottom: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.collapse-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  cursor: pointer;
+  margin-bottom: 4px;
+  transition: border-color 0.15s;
+}
+.collapse-header:hover { border-color: var(--p-border-light); }
+.collapse-header-label {
+  font-size: 11px;
+  color: var(--p-text);
+}
+.collapse-header-count {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--p-text-muted);
+}
+.collapse-chevron {
+  font-size: 10px;
+  color: var(--p-text-muted);
+  transition: transform 0.2s;
+  margin-left: 6px;
+}
+.collapse-header.open .collapse-chevron { transform: rotate(90deg); }
+.collapse-body {
+  display: none;
+  padding-left: 0;
+}
+.collapse-body.open { display: block; }
+.memory-item:hover { border-color: var(--p-border-light); }
+.memory-item.highlighted {
+  border-color: var(--p-primary);
+  background: var(--p-primary-glow);
+}
+.memory-item-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--p-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 3px;
+}
+.memory-item-content {
+  font-size: 11px;
+  color: var(--p-text);
+  line-height: 1.5;
+}
+.memory-item-time {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--p-text-muted);
+  margin-top: 4px;
+}
+
+.pin-icon {
+  float: right;
+  font-size: 10px;
+  color: var(--p-accent);
+  opacity: 0.6;
+}
+
+/* Event log mini */
+.event-log {
+  max-height: 160px;
+  overflow-y: auto;
+}
+.event-entry {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(42,42,42,0.3);
+  font-size: 10px;
+}
+.event-time {
+  font-family: var(--font-mono);
+  color: var(--p-text-muted);
+  flex-shrink: 0;
+  min-width: 48px;
+}
+.event-text { color: var(--p-text); }
+.event-text.policy { color: var(--p-warning); }
+.event-text.error { color: var(--p-error); }
+
+/* ══════════════════════════════════════════════════════════════
+   6. HEADER BUTTONS & UTILITIES
+   ══════════════════════════════════════════════════════════════ */
+
+.header-btn {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+  color: var(--p-text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.header-btn:hover { border-color: var(--p-border-light); color: var(--p-text); }
+.header-btn svg { vertical-align: middle; margin-right: 4px; }
+
+/* Turn indicator */
+.turn-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--rad-sm);
+}
+.turn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: turnPulse 2s infinite;
+}
+@keyframes turnPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+.turn-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--p-text-muted);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   7. NOTIFICATION / SYSTEM TOAST
+   ══════════════════════════════════════════════════════════════ */
+
+.toast-container {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  padding: 10px 16px;
+  background: var(--p-card);
+  border: 1px solid var(--p-border);
+  border-left: 3px solid var(--p-warning);
+  border-radius: var(--rad-sm);
+  font-size: 11px;
+  color: var(--p-text);
+  max-width: 320px;
+  animation: toastIn 0.3s ease;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+.toast.policy { border-left-color: var(--p-warning); }
+.toast.info { border-left-color: var(--p-info); }
+.toast.error { border-left-color: var(--p-error); }
+.toast-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 3px;
+}
+.toast.policy .toast-title { color: var(--p-warning); }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+</style>
 </head>
 <body>
-    <header>
-        <div class="header-title">CERBERUS</div>
-        <div class="header-info">
-            <div class="session-badge">Session: <span id="session-id">loading...</span></div>
-            <div><span class="connection-indicator" id="connection-indicator"></span>
-            <span id="connection-status">Connecting...</span></div>
-        </div>
-    </header>
 
-    <main>
-        <div class="message-thread" id="message-thread"></div>
-    </main>
+<div class="app-shell">
 
-    <div class="input-section">
-        <div class="routing-buttons">
-            <button class="route-button active" data-target="both">Sarah & Claude</button>
-            <button class="route-button" data-target="sarah">Sarah Only</button>
-            <button class="route-button" data-target="claude">Claude Only</button>
+  <!-- ════════════════════════════════════════════
+       HEADER
+       ════════════════════════════════════════════ -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo-mark">
+        <div class="logo-icon">
+          <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="14" cy="8" r="4" stroke="#e07830" stroke-width="1.5" fill="none"/>
+            <circle cx="7" cy="18" r="4" stroke="#6b8acd" stroke-width="1.5" fill="none"/>
+            <circle cx="21" cy="18" r="4" stroke="#5daa68" stroke-width="1.5" fill="none"/>
+            <line x1="12" y1="11" x2="9" y2="15" stroke="#2a2a2a" stroke-width="1"/>
+            <line x1="16" y1="11" x2="19" y2="15" stroke="#2a2a2a" stroke-width="1"/>
+            <line x1="11" y1="18" x2="17" y2="18" stroke="#2a2a2a" stroke-width="1"/>
+          </svg>
         </div>
-        <form id="message-form" class="input-group">
-            <input type="text" id="message-input" placeholder="Ask the agents..." required>
-            <button type="submit" id="send-button">Send</button>
-        </form>
+        <span class="logo-title">CERBERUS</span>
+        <span class="logo-version">v0.1</span>
+      </div>
     </div>
-
-    <div class="status-bar">
-        <div class="status-left">
-            <span id="message-count">0 messages</span>
-        </div>
-        <div class="status-right">
-            <span id="status-text">Ready</span>
-        </div>
+    <div class="header-center">
+      <div class="turn-indicator" id="turnIndicator">
+        <div class="turn-dot" style="background: var(--agent-operator);"></div>
+        <span class="turn-label">OPERATOR TURN</span>
+      </div>
+      <span class="session-id" id="sessionId">Loading...</span>
     </div>
+    <div class="header-right">
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--p-text-muted);">
+        <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--p-success);" id="connectionDot"></div>
+        <span id="connectionStatus">Connecting...</span>
+      </div>
+    </div>
+  </header>
 
-    <script>
-        class CerberusClient {
-            constructor() {
-                this.sessionId = null;
-                this.threadId = "thr_main";
-                this.ws = null;
-                this.messageCount = 0;
-                this.currentTarget = "both";
-                this.isConnected = false;
+  <!-- ════════════════════════════════════════════
+       MAIN GRID
+       ════════════════════════════════════════════ -->
+  <main class="main-grid">
 
-                this.elements = {
-                    sessionId: document.getElementById("session-id"),
-                    messageThread: document.getElementById("message-thread"),
-                    messageInput: document.getElementById("message-input"),
-                    messageForm: document.getElementById("message-form"),
-                    sendButton: document.getElementById("send-button"),
-                    connectionIndicator: document.getElementById("connection-indicator"),
-                    connectionStatus: document.getElementById("connection-status"),
-                    messageCount: document.getElementById("message-count"),
-                    statusText: document.getElementById("status-text"),
-                };
+    <!-- ── LEFT PANEL: Governance ── -->
+    <aside class="left-panel">
 
-                this.initializeEventListeners();
-                this.initializeSession();
-            }
+      <!-- Communication Mode -->
+      <div class="panel-section">
+        <div class="panel-section-title">Communication Mode</div>
+        <div class="mode-grid" id="modeGrid">
+          <button class="mode-btn active" data-mode="direct">Direct</button>
+          <button class="mode-btn" data-mode="broadcast">Broadcast</button>
+          <button class="mode-btn" data-mode="structured">Structured</button>
+          <button class="mode-btn" data-mode="gated">Gated</button>
+        </div>
+      </div>
 
-            initializeEventListeners() {
-                // Routing buttons
-                document.querySelectorAll(".route-button").forEach((btn) => {
-                    btn.addEventListener("click", (e) => {
-                        document
-                            .querySelectorAll(".route-button")
-                            .forEach((b) => b.classList.remove("active"));
-                        btn.classList.add("active");
-                        this.currentTarget = btn.dataset.target;
-                    });
-                });
+      <!-- Policy Toggles -->
+      <div class="panel-section">
+        <div class="panel-section-title">Governance</div>
+        <div class="toggle-row">
+          <span class="toggle-label">Require Approval</span>
+          <div class="toggle-switch" id="toggleApproval"></div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Sequential Turns</span>
+          <div class="toggle-switch on" id="toggleTurns"></div>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Transcript Logging</span>
+          <div class="toggle-switch on" id="toggleLogging"></div>
+        </div>
+      </div>
 
-                // Message form
-                this.elements.messageForm.addEventListener("submit", (e) => {
-                    e.preventDefault();
-                    this.sendMessage();
-                });
-            }
+      <!-- Challenge Limit -->
+      <div class="panel-section">
+        <div class="panel-section-title">Challenge Budget</div>
+        <div class="challenge-meter">
+          <div class="meter-bar">
+            <div class="meter-fill" id="challengeFill" style="width: 20%;"></div>
+          </div>
+          <div class="meter-label">
+            <span id="challengeCount">5 / 5</span>
+            <span>per session</span>
+          </div>
+        </div>
+      </div>
 
-            async initializeSession() {
-                try {
-                    // Create a new session
-                    const response = await fetch("/api/sessions", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ user_id: "matthew", user_label: "Matthew" }),
-                    });
+      <!-- Agent Controls -->
+      <div class="panel-section">
+        <div class="panel-section-title">Agent Controls</div>
+        <div class="agent-control">
+          <div class="agent-control-dot" style="background: var(--agent-sarah);"></div>
+          <span class="agent-control-name" style="color: var(--agent-sarah);">Sarah</span>
+          <button class="agent-action-btn" id="muteSarah">Mute</button>
+        </div>
+        <div class="agent-control">
+          <div class="agent-control-dot" style="background: var(--agent-claude);"></div>
+          <span class="agent-control-name" style="color: var(--agent-claude);">Claude</span>
+          <button class="agent-action-btn" id="muteClaude">Mute</button>
+        </div>
+      </div>
 
-                    const data = await response.json();
-                    this.sessionId = data.session_id;
-                    this.elements.sessionId.textContent = this.sessionId.slice(-8);
+      <!-- Session Controls -->
+      <div class="panel-section" style="border-bottom: none;">
+        <div class="panel-section-title">Session</div>
+        <div class="session-controls">
+          <button class="session-btn pause" id="pauseBtn">Pause Session</button>
+          <button class="session-btn terminate" id="terminateBtn">Terminate</button>
+        </div>
+      </div>
 
-                    // Connect to WebSocket
-                    this.connectWebSocket();
+    </aside>
 
-                    // Load existing events
-                    await this.loadExistingEvents();
-                } catch (error) {
-                    console.error("Failed to initialize session:", error);
-                    this.updateStatus("Failed to initialize session");
-                }
-            }
+    <!-- ── CENTER: Conversation Core ── -->
+    <section class="conversation-area">
 
-            async loadExistingEvents() {
-                try {
-                    const response = await fetch(
-                        `/api/sessions/${this.sessionId}/events?thread_id=${this.threadId}&limit=100`
-                    );
-                    const data = await response.json();
+      <!-- Agent presence strip -->
+      <div class="agent-strip">
+        <div class="agent-strip-item" data-agent="operator">
+          <div class="agent-status-pip"></div>
+          <span>Matthew</span>
+        </div>
+        <div class="agent-strip-item" data-agent="sarah">
+          <div class="agent-status-pip"></div>
+          <span>Sarah</span>
+        </div>
+        <div class="agent-strip-item" data-agent="claude">
+          <div class="agent-status-pip"></div>
+          <span>Claude</span>
+        </div>
+      </div>
 
-                    data.events.forEach((event) => {
-                        this.renderEvent(event);
-                    });
+      <!-- Message thread -->
+      <div class="message-thread" id="messageThread">
+      </div>
 
-                    this.autoScroll();
-                } catch (error) {
-                    console.error("Failed to load events:", error);
-                }
-            }
+      <!-- Typing indicator -->
+      <div class="typing-indicator" id="typingIndicator">
+        <div class="typing-dots">
+          <span></span><span></span><span></span>
+        </div>
+        <span class="typing-label" id="typingLabel">Waiting for response...</span>
+      </div>
 
-            connectWebSocket() {
-                const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-                const wsUrl = `${protocol}//${window.location.host}/ws/${this.sessionId}`;
+      <!-- Input area -->
+      <div class="input-area">
+        <div class="input-controls">
+          <div class="routing-selector" id="routingSelector">
+            <button class="route-btn" data-route="sarah">Sarah</button>
+            <button class="route-btn active" data-route="both">Both</button>
+            <button class="route-btn" data-route="claude">Claude</button>
+          </div>
+          <div class="msg-type-selector" id="msgTypeSelector">
+            <button class="type-btn" data-type="instruction">Instruct</button>
+            <button class="type-btn active" data-type="query">Query</button>
+            <button class="type-btn" data-type="challenge">Challenge</button>
+          </div>
+        </div>
+        <div class="input-row">
+          <textarea class="message-input" id="messageInput" placeholder="Enter command or message..." rows="1"></textarea>
+          <button class="send-btn" id="sendBtn">Send</button>
+        </div>
+      </div>
 
-                this.ws = new WebSocket(wsUrl);
+    </section>
 
-                this.ws.onopen = () => {
-                    this.isConnected = true;
-                    this.updateConnectionStatus(true);
-                    this.updateStatus("Connected");
-                    console.log("WebSocket connected");
-                };
+    <!-- ── RIGHT PANEL: Memory & Context ── -->
+    <aside class="right-panel">
 
-                this.ws.onmessage = (event) => {
-                    const eventData = JSON.parse(event.data);
-                    this.renderEvent(eventData);
-                    this.autoScroll();
-                };
+      <!-- Active Project -->
+      <div class="panel-section">
+        <div class="panel-section-title">Active Context</div>
+        <div class="memory-item highlighted">
+          <div class="memory-item-label">Active Project</div>
+          <div class="memory-item-content">CERBERUS — Triadic Coordination Interface</div>
+          <div class="memory-item-time">Session active</div>
+        </div>
+      </div>
 
-                this.ws.onerror = (error) => {
-                    console.error("WebSocket error:", error);
-                    this.updateStatus("WebSocket error");
-                };
+      <!-- Message Count -->
+      <div class="panel-section">
+        <div class="panel-section-title">Session Stats</div>
+        <div class="memory-item">
+          <div class="memory-item-label">Messages</div>
+          <div class="memory-item-content" id="memoryMsgCount">0 messages</div>
+        </div>
+      </div>
 
-                this.ws.onclose = () => {
-                    this.isConnected = false;
-                    this.updateConnectionStatus(false);
-                    this.updateStatus("Disconnected");
-                    // Attempt to reconnect
-                    setTimeout(() => this.connectWebSocket(), 3000);
-                };
-            }
+      <!-- Standing Orders (collapsible) -->
+      <div class="panel-section">
+        <div class="panel-section-title">Standing Orders</div>
+        <div class="collapse-header" onclick="this.nextElementSibling.classList.toggle('open'); this.classList.toggle('open')">
+          <span class="collapse-header-label">Active orders</span>
+          <span><span class="collapse-header-count">2 items</span><span class="collapse-chevron">&#9654;</span></span>
+        </div>
+        <div class="collapse-body">
+          <div class="memory-item">
+            <span class="pin-icon">&#9670;</span>
+            <div class="memory-item-label">Policy</div>
+            <div class="memory-item-content">All responses logged and timestamped</div>
+          </div>
+          <div class="memory-item">
+            <span class="pin-icon">&#9670;</span>
+            <div class="memory-item-label">Constraint</div>
+            <div class="memory-item-content">Messages are routed based on target selection</div>
+          </div>
+        </div>
+      </div>
 
-            sendMessage() {
-                const text = this.elements.messageInput.value.trim();
-                if (!text || !this.isConnected) return;
+      <!-- Recent Events (collapsible) -->
+      <div class="panel-section">
+        <div class="panel-section-title">Recent Events</div>
+        <div class="collapse-header open" onclick="this.nextElementSibling.classList.toggle('open'); this.classList.toggle('open')">
+          <span class="collapse-header-label">Session events</span>
+          <span><span class="collapse-header-count">live</span><span class="collapse-chevron">&#9654;</span></span>
+        </div>
+        <div class="collapse-body open event-log" id="eventLog">
+        </div>
+      </div>
 
-                const command = {
-                    command: "send_message",
-                    session_id: this.sessionId,
-                    thread_id: this.threadId,
-                    payload: {
-                        text: text,
-                        target: this.currentTarget,
-                        message_type: "query",
-                    },
-                };
+    </aside>
 
-                this.ws.send(JSON.stringify(command));
-                this.elements.messageInput.value = "";
-                this.elements.sendButton.disabled = true;
-                this.updateStatus("Waiting for response...");
+  </main>
 
-                // Show typing indicators
-                if (this.currentTarget === "both" || this.currentTarget === "sarah") {
-                    this.addTypingIndicator("sarah");
-                }
-                if (this.currentTarget === "both" || this.currentTarget === "claude") {
-                    this.addTypingIndicator("claude");
-                }
-            }
+  <!-- ════════════════════════════════════════════
+       STATUS BAR
+       ════════════════════════════════════════════ -->
+  <footer class="status-bar">
+    <div class="status-group">
+      <div class="status-item">
+        <div class="status-dot active" id="connectionDotFooter"></div>
+        <span id="connectionStatusFooter">Connecting...</span>
+      </div>
+      <div class="status-item">
+        <div class="status-dot active"></div>
+        <span id="modeDisplay">Mode: Direct</span>
+      </div>
+    </div>
+    <div class="status-group">
+      <div class="status-item">
+        <span id="msgCountFooter">Messages: 0</span>
+      </div>
+    </div>
+  </footer>
 
-            renderEvent(event) {
-                const { source, payload, timestamp } = event;
+</div>
 
-                // Map source to user display
-                const senderMap = {
-                    matthew: { name: "Matthew", class: "matthew" },
-                    sarah: { name: "Sarah", class: "sarah" },
-                    claude: { name: "Claude", class: "claude" },
-                    system: { name: "System", class: "system" },
-                };
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
 
-                const sender = senderMap[source.id] || {
-                    name: source.label || source.id,
-                    class: "system",
-                };
+<script>
 
-                // Extract message content
-                let messageText = "";
-                if (payload && payload.content) {
-                    if (Array.isArray(payload.content) && payload.content.length > 0) {
-                        messageText = payload.content[0].text || payload.content[0];
-                    } else if (typeof payload.content === "string") {
-                        messageText = payload.content;
-                    }
-                }
+class CerberusClient {
+  constructor() {
+    this.sessionId = null;
+    this.threadId = "thr_main";
+    this.ws = null;
+    this.messageCount = 0;
+    this.currentTarget = "both";
+    this.currentMessageType = "query";
+    this.currentMode = "direct";
+    this.isConnected = false;
+    this.isPaused = false;
+    this.mutedAgents = {};
+    this.typingIndicators = {};
 
-                if (!messageText) return;
+    this.elements = {
+      sessionId: document.getElementById("sessionId"),
+      messageThread: document.getElementById("messageThread"),
+      messageInput: document.getElementById("messageInput"),
+      sendBtn: document.getElementById("sendBtn"),
+      connectionDot: document.getElementById("connectionDot"),
+      connectionStatus: document.getElementById("connectionStatus"),
+      connectionDotFooter: document.getElementById("connectionDotFooter"),
+      connectionStatusFooter: document.getElementById("connectionStatusFooter"),
+      typingIndicator: document.getElementById("typingIndicator"),
+      typingLabel: document.getElementById("typingLabel"),
+      modeDisplay: document.getElementById("modeDisplay"),
+      msgCountFooter: document.getElementById("msgCountFooter"),
+      memoryMsgCount: document.getElementById("memoryMsgCount"),
+      eventLog: document.getElementById("eventLog"),
+      pauseBtn: document.getElementById("pauseBtn"),
+      muteSarah: document.getElementById("muteSarah"),
+      muteClaude: document.getElementById("muteClaude"),
+    };
 
-                // Remove typing indicator for this sender if it exists
-                const typingIndicator = document.querySelector(
-                    `.typing-indicator[data-sender="${source.id}"]`
-                );
-                if (typingIndicator) {
-                    typingIndicator.remove();
-                }
+    this.initializeEventListeners();
+    this.initializeSession();
+  }
 
-                // Create message element
-                const messageEl = document.createElement("div");
-                messageEl.className = "message";
+  initializeEventListeners() {
+    // Routing buttons
+    document.querySelectorAll(".route-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        document.querySelectorAll(".route-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        this.currentTarget = btn.dataset.route;
+      });
+    });
 
-                const header = document.createElement("div");
-                header.className = "message-header";
+    // Message type buttons
+    document.querySelectorAll(".type-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        document.querySelectorAll(".type-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        this.currentMessageType = btn.dataset.type;
+      });
+    });
 
-                const senderName = document.createElement("span");
-                senderName.className = `message-sender ${sender.class}`;
-                senderName.textContent = sender.name;
+    // Mode buttons
+    document.querySelectorAll(".mode-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        document.querySelectorAll(".mode-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        this.currentMode = btn.dataset.mode;
+        this.elements.modeDisplay.textContent = `Mode: ${btn.dataset.mode.toUpperCase()}`;
+      });
+    });
 
-                const time = new Date(timestamp).toLocaleTimeString("en-US", {
-                    hour12: false,
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                });
+    // Pause button
+    this.elements.pauseBtn.addEventListener("click", () => {
+      this.isPaused = !this.isPaused;
+      this.elements.pauseBtn.classList.toggle("active");
+    });
 
-                const timeEl = document.createElement("span");
-                timeEl.className = "message-timestamp";
-                timeEl.textContent = time;
+    // Mute buttons
+    this.elements.muteSarah.addEventListener("click", () => {
+      this.mutedAgents.sarah = !this.mutedAgents.sarah;
+      this.elements.muteSarah.classList.toggle("muted");
+    });
 
-                header.appendChild(senderName);
-                header.appendChild(timeEl);
+    this.elements.muteClaude.addEventListener("click", () => {
+      this.mutedAgents.claude = !this.mutedAgents.claude;
+      this.elements.muteClaude.classList.toggle("muted");
+    });
 
-                const content = document.createElement("div");
-                content.className = "message-content";
-                content.textContent = messageText;
+    // Message input and send
+    this.elements.messageInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        this.sendMessage();
+      }
+    });
 
-                messageEl.appendChild(header);
-                messageEl.appendChild(content);
+    this.elements.sendBtn.addEventListener("click", () => this.sendMessage());
 
-                this.elements.messageThread.appendChild(messageEl);
+    // Click on messages to show/hide metadata
+    document.addEventListener("click", (e) => {
+      const messageEl = e.target.closest(".message");
+      if (messageEl) {
+        document.querySelectorAll(".message").forEach((m) => m.classList.remove("selected"));
+        messageEl.classList.add("selected");
+      }
+    });
+  }
 
-                this.messageCount++;
-                this.elements.messageCount.textContent =
-                    this.messageCount + " message" + (this.messageCount !== 1 ? "s" : "");
+  async initializeSession() {
+    try {
+      const response = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: "matthew", user_label: "Matthew" }),
+      });
 
-                this.elements.sendButton.disabled = false;
-                this.updateStatus("Ready");
-            }
+      const data = await response.json();
+      this.sessionId = data.session_id;
+      this.elements.sessionId.textContent = this.sessionId.slice(-12);
+      this.logEvent("Session created", "info");
 
-            addTypingIndicator(sender) {
-                const typingDiv = document.createElement("div");
-                typingDiv.className = "typing-indicator";
-                typingDiv.setAttribute("data-sender", sender);
-                typingDiv.innerHTML = `
-                    <span>${sender === "sarah" ? "Sarah" : "Claude"} is thinking</span>
-                    <div class="typing-dot"></div>
-                    <div class="typing-dot"></div>
-                    <div class="typing-dot"></div>
-                `;
+      this.connectWebSocket();
+      await this.loadExistingEvents();
+    } catch (error) {
+      console.error("Failed to initialize session:", error);
+      this.logEvent("Failed to initialize session", "error");
+    }
+  }
 
-                this.elements.messageThread.appendChild(typingDiv);
-                this.autoScroll();
-            }
+  async loadExistingEvents() {
+    try {
+      const response = await fetch(
+        `/api/sessions/${this.sessionId}/events?thread_id=${this.threadId}&limit=100`
+      );
+      const data = await response.json();
 
-            autoScroll() {
-                this.elements.messageThread.scrollTop = this.elements.messageThread.scrollHeight;
-            }
-
-            updateConnectionStatus(isConnected) {
-                if (isConnected) {
-                    this.elements.connectionIndicator.classList.remove("disconnected");
-                    this.elements.connectionStatus.textContent = "Connected";
-                } else {
-                    this.elements.connectionIndicator.classList.add("disconnected");
-                    this.elements.connectionStatus.textContent = "Disconnected";
-                }
-            }
-
-            updateStatus(text) {
-                this.elements.statusText.textContent = text;
-            }
-        }
-
-        // Initialize on page load
-        window.addEventListener("DOMContentLoaded", () => {
-            new CerberusClient();
+      if (data.events && Array.isArray(data.events)) {
+        data.events.forEach((event) => {
+          this.renderEvent(event);
         });
-    </script>
+      }
+
+      this.autoScroll();
+    } catch (error) {
+      console.error("Failed to load events:", error);
+    }
+  }
+
+  connectWebSocket() {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/ws/${this.sessionId}`;
+
+    this.ws = new WebSocket(wsUrl);
+
+    this.ws.onopen = () => {
+      this.isConnected = true;
+      this.updateConnectionStatus(true);
+      this.logEvent("WebSocket connected", "info");
+      console.log("WebSocket connected");
+    };
+
+    this.ws.onmessage = (event) => {
+      const eventData = JSON.parse(event.data);
+      this.renderEvent(eventData);
+      this.autoScroll();
+    };
+
+    this.ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      this.logEvent("WebSocket error", "error");
+    };
+
+    this.ws.onclose = () => {
+      this.isConnected = false;
+      this.updateConnectionStatus(false);
+      this.logEvent("WebSocket disconnected", "error");
+      setTimeout(() => this.connectWebSocket(), 3000);
+    };
+  }
+
+  sendMessage() {
+    const text = this.elements.messageInput.value.trim();
+    if (!text || !this.isConnected || this.isPaused) return;
+
+    const command = {
+      command: "send_message",
+      session_id: this.sessionId,
+      thread_id: this.threadId,
+      payload: {
+        text: text,
+        target: this.currentTarget,
+        message_type: this.currentMessageType,
+      },
+    };
+
+    this.ws.send(JSON.stringify(command));
+    this.logEvent(`Message sent to ${this.currentTarget}`, "info");
+    this.elements.messageInput.value = "";
+    this.elements.sendBtn.disabled = true;
+
+    // Show typing indicators
+    if (this.currentTarget === "both" || this.currentTarget === "sarah") {
+      if (!this.mutedAgents.sarah) this.addTypingIndicator("sarah");
+    }
+    if (this.currentTarget === "both" || this.currentTarget === "claude") {
+      if (!this.mutedAgents.claude) this.addTypingIndicator("claude");
+    }
+  }
+
+  renderEvent(event) {
+    const { source, payload, timestamp } = event;
+
+    const senderMap = {
+      matthew: { name: "Matthew", id: "operator" },
+      sarah: { name: "Sarah", id: "sarah" },
+      claude: { name: "Claude", id: "claude" },
+      system: { name: "System", id: "system" },
+    };
+
+    const sender = senderMap[source.id] || {
+      name: source.label || source.id,
+      id: "system",
+    };
+
+    // Check if muted
+    if ((sender.id === "sarah" && this.mutedAgents.sarah) ||
+        (sender.id === "claude" && this.mutedAgents.claude)) {
+      return;
+    }
+
+    let messageText = "";
+    if (payload && payload.content) {
+      if (Array.isArray(payload.content) && payload.content.length > 0) {
+        messageText = payload.content[0].text || payload.content[0];
+      } else if (typeof payload.content === "string") {
+        messageText = payload.content;
+      }
+    }
+
+    if (!messageText) return;
+
+    // Remove typing indicator for this sender
+    const typingId = `typing-${sender.id}`;
+    const typingEl = document.getElementById(typingId);
+    if (typingEl) typingEl.remove();
+    delete this.typingIndicators[sender.id];
+
+    // Create message element
+    const messageEl = document.createElement("div");
+    messageEl.className = "message";
+    messageEl.setAttribute("data-from", sender.id);
+
+    const header = document.createElement("div");
+    header.className = "message-header";
+
+    const senderName = document.createElement("span");
+    senderName.className = "message-sender";
+    senderName.textContent = sender.name;
+
+    const time = new Date(timestamp).toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+
+    const timeEl = document.createElement("span");
+    timeEl.className = "message-time";
+    timeEl.textContent = time;
+
+    header.appendChild(senderName);
+    header.appendChild(timeEl);
+
+    const content = document.createElement("div");
+    content.className = "message-content";
+    content.textContent = messageText;
+
+    messageEl.appendChild(header);
+    messageEl.appendChild(content);
+
+    // Add metadata if available
+    if (event.meta || event.event_type) {
+      const meta = document.createElement("div");
+      meta.className = "message-meta";
+      let metaHtml = "";
+      if (event.event_type) {
+        metaHtml += `<div class="meta-row"><span class="meta-label">Type:</span><span>${event.event_type}</span></div>`;
+      }
+      if (event.target) {
+        metaHtml += `<div class="meta-row"><span class="meta-label">Target:</span><span>${event.target}</span></div>`;
+      }
+      if (event.event_id) {
+        metaHtml += `<div class="meta-row"><span class="meta-label">ID:</span><span>${event.event_id.slice(-8)}</span></div>`;
+      }
+      meta.innerHTML = metaHtml;
+      messageEl.appendChild(meta);
+    }
+
+    this.elements.messageThread.appendChild(messageEl);
+
+    this.messageCount++;
+    this.updateMessageCount();
+    this.logEvent(`${sender.name} responded`, "info");
+
+    this.elements.sendBtn.disabled = false;
+  }
+
+  addTypingIndicator(sender) {
+    const typingId = `typing-${sender}`;
+    if (document.getElementById(typingId)) return;
+
+    const typingDiv = document.createElement("div");
+    typingDiv.id = typingId;
+    typingDiv.className = "typing-indicator active";
+    typingDiv.setAttribute("data-sender", sender);
+    typingDiv.innerHTML = `
+      <div class="typing-dots">
+        <span></span><span></span><span></span>
+      </div>
+      <span class="typing-label">${sender === "sarah" ? "Sarah" : "Claude"} is thinking...</span>
+    `;
+
+    this.elements.messageThread.appendChild(typingDiv);
+    this.typingIndicators[sender] = typingId;
+    this.autoScroll();
+  }
+
+  autoScroll() {
+    this.elements.messageThread.scrollTop = this.elements.messageThread.scrollHeight;
+  }
+
+  updateConnectionStatus(isConnected) {
+    if (isConnected) {
+      this.elements.connectionDot.style.background = "var(--p-success)";
+      this.elements.connectionStatus.textContent = "Connected";
+      this.elements.connectionDotFooter.style.background = "var(--p-success)";
+      this.elements.connectionStatusFooter.textContent = "Connected";
+    } else {
+      this.elements.connectionDot.style.background = "var(--p-error)";
+      this.elements.connectionStatus.textContent = "Disconnected";
+      this.elements.connectionDotFooter.style.background = "var(--p-error)";
+      this.elements.connectionStatusFooter.textContent = "Disconnected";
+    }
+  }
+
+  updateMessageCount() {
+    const text = this.messageCount === 1 ? "1 message" : `${this.messageCount} messages`;
+    this.elements.memoryMsgCount.textContent = text;
+    this.elements.msgCountFooter.textContent = `Messages: ${this.messageCount}`;
+  }
+
+  logEvent(text, type) {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+
+    const entry = document.createElement("div");
+    entry.className = "event-entry";
+    entry.innerHTML = `
+      <span class="event-time">${timeStr}</span>
+      <span class="event-text ${type === "error" ? "error" : type === "warning" ? "policy" : ""}">${text}</span>
+    `;
+
+    this.elements.eventLog.insertBefore(entry, this.elements.eventLog.firstChild);
+
+    // Limit to 50 entries
+    while (this.elements.eventLog.children.length > 50) {
+      this.elements.eventLog.removeChild(this.elements.eventLog.lastChild);
+    }
+  }
+}
+
+// Initialize on page load
+window.addEventListener("DOMContentLoaded", () => {
+  new CerberusClient();
+});
+
+</script>
 </body>
 </html>
