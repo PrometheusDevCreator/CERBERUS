@@ -1,5 +1,5 @@
 import asyncpg
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Any
 import json
 from app.config import settings
@@ -95,6 +95,12 @@ async def insert_event(
     parent_event_id: Optional[str] = None,
 ) -> None:
     """Insert an event into the database."""
+    # asyncpg requires a datetime object, not a string
+    if isinstance(timestamp, str):
+        ts = datetime.fromisoformat(timestamp)
+    else:
+        ts = timestamp
+
     async with pool.acquire() as conn:
         await conn.execute(
             """
@@ -124,7 +130,7 @@ async def insert_event(
             target_kind,
             target_id,
             target_label,
-            timestamp,
+            ts,
             sequence,
             status,
             visibility,
