@@ -1,10 +1,10 @@
 import httpx
-from typing import List, dict
+from typing import List, Dict
 import asyncio
 from app.config import settings
 
 
-async def call_sarah(message: str, conversation_history: List[dict]) -> str:
+async def call_sarah(message: str, conversation_history: List[Dict]) -> str:
     """Call OpenAI's GPT-5.4 (Sarah) with conversation history."""
     try:
         # Build messages list
@@ -47,7 +47,7 @@ async def call_sarah(message: str, conversation_history: List[dict]) -> str:
         return f"Error: Unexpected error calling Sarah: {str(e)}"
 
 
-async def call_claude(message: str, conversation_history: List[dict]) -> str:
+async def call_claude(message: str, conversation_history: List[Dict]) -> str:
     """Call Anthropic's Claude Opus 4.6 with conversation history."""
     try:
         # Build messages list
