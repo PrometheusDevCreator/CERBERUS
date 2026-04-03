@@ -1,6 +1,5 @@
 import httpx
 from typing import List, Dict
-import asyncio
 from pathlib import Path
 from app.config import settings
 
@@ -64,6 +63,7 @@ async def call_sarah(conversation_history: List[Dict]) -> str:
                     "max_completion_tokens": 4096,
                 },
             )
+            response.raise_for_status()
 
             data = response.json()
             if "choices" in data and len(data["choices"]) > 0:
@@ -71,8 +71,12 @@ async def call_sarah(conversation_history: List[Dict]) -> str:
             else:
                 return f"Error: Unexpected response from OpenAI: {data}"
 
-    except asyncio.TimeoutError:
+    except httpx.TimeoutException:
         return "Error: Request to Sarah timed out"
+    except httpx.HTTPStatusError as e:
+        return f"Error calling Sarah: HTTP {e.response.status_code}"
+    except httpx.HTTPError as e:
+        return f"Error calling Sarah: {str(e)}"
     except Exception as e:
         return f"Error calling Sarah: {str(e)}"
 
@@ -95,6 +99,7 @@ async def call_claude(conversation_history: List[Dict]) -> str:
                     "messages": conversation_history,
                 },
             )
+            response.raise_for_status()
 
             data = response.json()
             if "content" in data and len(data["content"]) > 0:
@@ -106,7 +111,11 @@ async def call_claude(conversation_history: List[Dict]) -> str:
             else:
                 return f"Error: Unexpected response from Anthropic: {data}"
 
-    except asyncio.TimeoutError:
+    except httpx.TimeoutException:
         return "Error: Request to Claude timed out"
+    except httpx.HTTPStatusError as e:
+        return f"Error calling Claude: HTTP {e.response.status_code}"
+    except httpx.HTTPError as e:
+        return f"Error calling Claude: {str(e)}"
     except Exception as e:
         return f"Error calling Claude: {str(e)}"

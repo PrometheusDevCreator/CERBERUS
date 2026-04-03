@@ -6,14 +6,19 @@ from ulid import ULID
 from datetime import datetime
 import os
 import json
+from pathlib import Path
+
+from pydantic import ValidationError
 
 from app.config import settings
-from app.db import init_db, get_events, create_session, get_session
+from app.db import init_db, get_events, create_session, get_session, canonicalize_event
 from app.ws_manager import ConnectionManager
 from app.models import ClientCommand, CreateSessionRequest, SessionResponse
 from app.orchestrator import handle_command
 
 app = FastAPI(title="CERBERUS", version="0.1.0")
+BASE_DIR = Path(__file__).resolve().parent.parent
+STATIC_DIR = BASE_DIR / "static"
 
 # Global state
 db_pool: asyncpg.Pool = None
@@ -39,7 +44,7 @@ async def shutdown():
 @app.get("/")
 async def get_index():
     """Serve the HTML frontend."""
-    return FileResponse("static/index.html", media_type="text/html")
+    return FileResponse(STATIC_DIR / "index.html", media_type="text/html")
 
 
 @app.get("/api/health")
@@ -68,17 +73,7 @@ async def create_new_session(request: CreateSessionRequest) -> SessionResponse:
 async def get_session_events(session_id: str, thread_id: str = None, limit: int = 100):
     """Fetch events for a session."""
     events = await get_events(db_pool, session_id, thread_id, limit)
-
-    # Convert jsonb fields to proper dicts
-    for event in events:
-        if isinstance(event["payload"], str):
-            event["payload"] = json.loads(event["payload"])
-        if isinstance(event["artifacts"], str):
-            event["artifacts"] = json.loads(event["artifacts"])
-        if isinstance(event["meta"], str):
-            event["meta"] = json.loads(event["meta"])
-
-    return {"events": events}
+    return {"events": [canonicalize_event(event) for event in events]}
 
 
 @app.websocket("/ws/{session_id}")
@@ -93,7 +88,17 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             command_data = json.loads(data)
 
             # Parse as ClientCommand
-            command = ClientCommand(**command_data)
+            try:
+                command = ClientCommand(**command_data)
+            except ValidationError as e:
+                await websocket.send_json(
+                    {
+                        "event_type": "system.error",
+                        "source": {"kind": "system", "id": "system", "label": "System"},
+                        "payload": {"message": "Invalid command payload", "detail": e.errors()},
+                    }
+                )
+                continue
 
             # Ensure session exists
             session = await get_session(db_pool, session_id)
@@ -111,8 +116,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
 
 # Mount static files
-if os.path.exists("static"):
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 if __name__ == "__main__":

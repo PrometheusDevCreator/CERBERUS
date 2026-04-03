@@ -72,6 +72,73 @@ async def init_db():
     return pool
 
 
+async def insert_event_record(
+    conn: asyncpg.Connection,
+    event_id: str,
+    session_id: str,
+    thread_id: str,
+    event_type: str,
+    source_kind: str,
+    source_id: str,
+    source_label: Optional[str],
+    target_kind: Optional[str],
+    target_id: Optional[str],
+    target_label: Optional[str],
+    timestamp: str,
+    sequence: int,
+    status: str,
+    visibility: Optional[str],
+    payload: dict,
+    artifacts: List[Any],
+    meta: dict,
+    run_id: Optional[str] = None,
+    parent_event_id: Optional[str] = None,
+) -> None:
+    """Insert an event using an existing connection."""
+    # asyncpg requires a datetime object, not a string
+    if isinstance(timestamp, str):
+        ts = datetime.fromisoformat(timestamp)
+    else:
+        ts = timestamp
+
+    await conn.execute(
+        """
+        INSERT INTO events (
+            event_id, session_id, thread_id, run_id, parent_event_id,
+            event_type, source_kind, source_id, source_label,
+            target_kind, target_id, target_label,
+            timestamp, sequence, status, visibility,
+            payload, artifacts, meta
+        ) VALUES (
+            $1, $2, $3, $4, $5,
+            $6, $7, $8, $9,
+            $10, $11, $12,
+            $13, $14, $15, $16,
+            $17, $18, $19
+        )
+        """,
+        event_id,
+        session_id,
+        thread_id,
+        run_id,
+        parent_event_id,
+        event_type,
+        source_kind,
+        source_id,
+        source_label,
+        target_kind,
+        target_id,
+        target_label,
+        ts,
+        sequence,
+        status,
+        visibility,
+        json.dumps(payload),
+        json.dumps(artifacts),
+        json.dumps(meta),
+    )
+
+
 async def insert_event(
     pool: asyncpg.Pool,
     event_id: str,
@@ -95,34 +162,12 @@ async def insert_event(
     parent_event_id: Optional[str] = None,
 ) -> None:
     """Insert an event into the database."""
-    # asyncpg requires a datetime object, not a string
-    if isinstance(timestamp, str):
-        ts = datetime.fromisoformat(timestamp)
-    else:
-        ts = timestamp
-
     async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO events (
-                event_id, session_id, thread_id, run_id, parent_event_id,
-                event_type, source_kind, source_id, source_label,
-                target_kind, target_id, target_label,
-                timestamp, sequence, status, visibility,
-                payload, artifacts, meta
-            ) VALUES (
-                $1, $2, $3, $4, $5,
-                $6, $7, $8, $9,
-                $10, $11, $12,
-                $13, $14, $15, $16,
-                $17, $18, $19
-            )
-            """,
+        await insert_event_record(
+            conn,
             event_id,
             session_id,
             thread_id,
-            run_id,
-            parent_event_id,
             event_type,
             source_kind,
             source_id,
@@ -130,13 +175,15 @@ async def insert_event(
             target_kind,
             target_id,
             target_label,
-            ts,
+            timestamp,
             sequence,
             status,
             visibility,
-            json.dumps(payload),
-            json.dumps(artifacts),
-            json.dumps(meta),
+            payload,
+            artifacts,
+            meta,
+            run_id,
+            parent_event_id,
         )
 
 
@@ -151,10 +198,13 @@ async def get_events(
         if thread_id:
             rows = await conn.fetch(
                 """
-                SELECT * FROM events
-                WHERE session_id = $1 AND thread_id = $2
+                SELECT * FROM (
+                    SELECT * FROM events
+                    WHERE session_id = $1 AND thread_id = $2
+                    ORDER BY sequence DESC
+                    LIMIT $3
+                ) recent
                 ORDER BY sequence ASC
-                LIMIT $3
                 """,
                 session_id,
                 thread_id,
@@ -163,10 +213,13 @@ async def get_events(
         else:
             rows = await conn.fetch(
                 """
-                SELECT * FROM events
-                WHERE session_id = $1
+                SELECT * FROM (
+                    SELECT * FROM events
+                    WHERE session_id = $1
+                    ORDER BY sequence DESC
+                    LIMIT $2
+                ) recent
                 ORDER BY sequence ASC
-                LIMIT $2
                 """,
                 session_id,
                 limit,
@@ -183,6 +236,50 @@ async def get_next_sequence(pool: asyncpg.Pool, session_id: str) -> int:
             session_id,
         )
     return result
+
+
+def canonicalize_event(event: dict) -> dict:
+    """Convert raw DB rows into the canonical event envelope shape."""
+    payload = event.get("payload", {})
+    artifacts = event.get("artifacts", [])
+    meta = event.get("meta", {})
+
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    if isinstance(artifacts, str):
+        artifacts = json.loads(artifacts)
+    if isinstance(meta, str):
+        meta = json.loads(meta)
+
+    target = None
+    if event.get("target_kind") and event.get("target_id"):
+        target = {
+            "kind": event.get("target_kind"),
+            "id": event.get("target_id"),
+            "label": event.get("target_label"),
+        }
+
+    return {
+        "event_id": event.get("event_id"),
+        "session_id": event.get("session_id"),
+        "thread_id": event.get("thread_id"),
+        "run_id": event.get("run_id"),
+        "parent_event_id": event.get("parent_event_id"),
+        "event_type": event.get("event_type"),
+        "source": {
+            "kind": event.get("source_kind"),
+            "id": event.get("source_id"),
+            "label": event.get("source_label"),
+        },
+        "target": target,
+        "timestamp": event.get("timestamp").isoformat() if isinstance(event.get("timestamp"), datetime) else event.get("timestamp"),
+        "sequence": event.get("sequence"),
+        "status": event.get("status"),
+        "visibility": event.get("visibility"),
+        "payload": payload,
+        "artifacts": artifacts,
+        "meta": meta,
+    }
 
 
 async def create_session(

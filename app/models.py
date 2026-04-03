@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Any, Literal
 from datetime import datetime
 
@@ -20,6 +20,7 @@ class MessagePayload(BaseModel):
     role: str
     content: List[dict]
     summary: Optional[str] = None
+    message_type: Optional[Literal["instruction", "query", "challenge", "response", "summary"]] = None
 
 
 class EventEnvelope(BaseModel):
@@ -33,16 +34,24 @@ class EventEnvelope(BaseModel):
     sequence: int
     status: str
     visibility: Optional[str] = None
-    payload: dict = {}
-    artifacts: List[Any] = []
-    meta: dict = {}
+    payload: dict = Field(default_factory=dict)
+    artifacts: List[Any] = Field(default_factory=list)
+    meta: dict = Field(default_factory=dict)
+
+
+class CommandPayload(BaseModel):
+    text: str
+    mode: Literal["conference", "direct"] = "conference"
+    target: Optional[Literal["sarah", "claude"]] = None
+    message_type: Literal["instruction", "query", "challenge"] = "query"
+    approval_required: bool = True
 
 
 class ClientCommand(BaseModel):
     command: str
     session_id: str
     thread_id: str
-    payload: dict
+    payload: CommandPayload
 
 
 class CreateSessionRequest(BaseModel):

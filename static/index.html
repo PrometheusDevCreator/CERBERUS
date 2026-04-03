@@ -994,11 +994,7 @@ html, body {
         <div class="panel-section-title">Governance</div>
         <div class="toggle-row">
           <span class="toggle-label">Require Approval</span>
-          <div class="toggle-switch" id="toggleApproval"></div>
-        </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Sequential Turns</span>
-          <div class="toggle-switch on" id="toggleTurns"></div>
+          <div class="toggle-switch on" id="toggleApproval"></div>
         </div>
         <div class="toggle-row">
           <span class="toggle-label">Transcript Logging</span>
@@ -1008,14 +1004,14 @@ html, body {
 
       <!-- Challenge Limit -->
       <div class="panel-section">
-        <div class="panel-section-title">Challenge Budget</div>
+        <div class="panel-section-title">Challenge Rule</div>
         <div class="challenge-meter">
           <div class="meter-bar">
-            <div class="meter-fill" id="challengeFill" style="width: 20%;"></div>
+            <div class="meter-fill" id="challengeFill" style="width: 0%;"></div>
           </div>
           <div class="meter-label">
-            <span id="challengeCount">5 / 5</span>
-            <span>per session</span>
+            <span id="challengeCount">0 / 2</span>
+            <span>current proposal</span>
           </div>
         </div>
       </div>
@@ -1204,15 +1200,19 @@ html, body {
 class CerberusClient {
   constructor() {
     this.sessionId = null;
-    this.threadId = "thr_main";
     this.ws = null;
     this.messageCount = 0;
     this.currentMode = "conference";
     this.currentMessageType = "query";
+    this.approvalRequired = true;
     this.isConnected = false;
     this.isPaused = false;
+    this.isLoggingEnabled = true;
+    this.manualClose = false;
+    this.awaitingConferenceCompletion = false;
     this.mutedAgents = {};
     this.typingIndicators = {};
+    this.pendingAgents = new Set();
 
     this.elements = {
       sessionId: document.getElementById("sessionId"),
@@ -1234,8 +1234,110 @@ class CerberusClient {
       muteClaude: document.getElementById("muteClaude"),
     };
 
+    document.getElementById("toggleApproval").classList.add("on");
+    document.getElementById("toggleLogging").classList.add("on");
     this.initializeEventListeners();
     this.initializeSession();
+  }
+
+  getCurrentTarget() {
+    return document.getElementById("directTarget").value;
+  }
+
+  getCurrentThreadId() {
+    if (this.currentMode === "direct") {
+      return `thr_direct_${this.getCurrentTarget()}`;
+    }
+    return "thr_main";
+  }
+
+  async switchConversationView() {
+    const directControl = document.getElementById("directTargetControl");
+    const modeIndicator = document.getElementById("modeIndicator");
+
+    if (this.currentMode === "direct") {
+      directControl.style.display = "block";
+      const target = this.getCurrentTarget();
+      modeIndicator.textContent = `DIRECT - Speaking to ${target.charAt(0).toUpperCase() + target.slice(1)}`;
+    } else {
+      directControl.style.display = "none";
+      modeIndicator.textContent = "CONFERENCE - All participants";
+    }
+
+    this.elements.modeDisplay.textContent = `Mode: ${this.currentMode.toUpperCase()}`;
+    await this.loadExistingEvents();
+  }
+
+  resetConversationView() {
+    this.elements.messageThread.innerHTML = "";
+    this.typingIndicators = {};
+    this.pendingAgents.clear();
+    this.messageCount = 0;
+    this.updateMessageCount();
+  }
+
+  resolvePendingAgent(senderId) {
+    if (!senderId) return;
+    this.pendingAgents.delete(senderId);
+    const typingId = `typing-${senderId}`;
+    const typingEl = document.getElementById(typingId);
+    if (typingEl) typingEl.remove();
+    delete this.typingIndicators[senderId];
+    if (!this.awaitingConferenceCompletion && this.pendingAgents.size === 0) {
+      this.elements.sendBtn.disabled = false;
+    }
+  }
+
+  renderPendingApproval(sender, timestamp, messageText) {
+    const messageEl = document.createElement("div");
+    messageEl.className = "message";
+    messageEl.setAttribute("data-from", sender.id);
+
+    const header = document.createElement("div");
+    header.className = "message-header";
+    header.innerHTML = `
+      <span class="message-sender">${sender.name}</span>
+      <span class="message-time">${timestamp}</span>
+    `;
+
+    const content = document.createElement("div");
+    content.className = "message-content";
+    content.innerHTML = "[Pending operator approval]";
+
+    const actions = document.createElement("div");
+    actions.style.marginTop = "8px";
+    actions.style.display = "flex";
+    actions.style.gap = "8px";
+
+    const approveBtn = document.createElement("button");
+    approveBtn.className = "send-btn";
+    approveBtn.style.padding = "6px 10px";
+    approveBtn.style.fontSize = "10px";
+    approveBtn.textContent = "Approve";
+
+    const rejectBtn = document.createElement("button");
+    rejectBtn.className = "session-btn terminate";
+    rejectBtn.style.padding = "6px 10px";
+    rejectBtn.style.fontSize = "10px";
+    rejectBtn.textContent = "Reject";
+
+    approveBtn.addEventListener("click", () => {
+      content.textContent = messageText;
+      actions.remove();
+      this.logEvent(`${sender.name} response approved`, "warning");
+    });
+
+    rejectBtn.addEventListener("click", () => {
+      messageEl.remove();
+      this.logEvent(`${sender.name} response rejected`, "warning");
+    });
+
+    actions.appendChild(approveBtn);
+    actions.appendChild(rejectBtn);
+    messageEl.appendChild(header);
+    messageEl.appendChild(content);
+    messageEl.appendChild(actions);
+    this.elements.messageThread.appendChild(messageEl);
   }
 
   initializeEventListeners() {
@@ -1250,30 +1352,33 @@ class CerberusClient {
 
     // Mode buttons (Conference / Direct)
     document.querySelectorAll(".mode-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
+      btn.addEventListener("click", async () => {
         document.querySelectorAll(".mode-btn").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         this.currentMode = btn.dataset.mode;
-        this.elements.modeDisplay.textContent = `Mode: ${btn.dataset.mode.toUpperCase()}`;
-
-        const directControl = document.getElementById("directTargetControl");
-        const modeIndicator = document.getElementById("modeIndicator");
-
-        if (btn.dataset.mode === "direct") {
-          directControl.style.display = "block";
-          const target = document.getElementById("directTarget").value;
-          modeIndicator.textContent = `DIRECT — Speaking to ${target.charAt(0).toUpperCase() + target.slice(1)}`;
-        } else {
-          directControl.style.display = "none";
-          modeIndicator.textContent = "CONFERENCE — All participants";
-        }
+        await this.switchConversationView();
       });
     });
 
     // Direct target selector
-    document.getElementById("directTarget").addEventListener("change", (e) => {
-      const target = e.target.value;
-      document.getElementById("modeIndicator").textContent = `DIRECT — Speaking to ${target.charAt(0).toUpperCase() + target.slice(1)}`;
+    document.getElementById("directTarget").addEventListener("change", async () => {
+      if (this.currentMode === "direct") {
+        await this.switchConversationView();
+      }
+    });
+
+    document.getElementById("toggleApproval").addEventListener("click", () => {
+      const toggle = document.getElementById("toggleApproval");
+      toggle.classList.toggle("on");
+      this.approvalRequired = toggle.classList.contains("on");
+      this.logEvent(`Approval gating ${this.approvalRequired ? "enabled" : "disabled"}`, "warning");
+    });
+
+    document.getElementById("toggleLogging").addEventListener("click", () => {
+      const toggle = document.getElementById("toggleLogging");
+      toggle.classList.toggle("on");
+      this.isLoggingEnabled = toggle.classList.contains("on");
+      this.logEvent(`Transcript logging ${this.isLoggingEnabled ? "enabled" : "disabled"}`, "warning");
     });
 
     // Pause button
@@ -1327,7 +1432,7 @@ class CerberusClient {
       this.logEvent("Session created", "info");
 
       this.connectWebSocket();
-      await this.loadExistingEvents();
+      await this.switchConversationView();
     } catch (error) {
       console.error("Failed to initialize session:", error);
       this.logEvent("Failed to initialize session", "error");
@@ -1336,14 +1441,16 @@ class CerberusClient {
 
   async loadExistingEvents() {
     try {
+      this.resetConversationView();
+      const threadId = this.getCurrentThreadId();
       const response = await fetch(
-        `/api/sessions/${this.sessionId}/events?thread_id=${this.threadId}&limit=100`
+        `/api/sessions/${this.sessionId}/events?thread_id=${threadId}&limit=100`
       );
       const data = await response.json();
 
       if (data.events && Array.isArray(data.events)) {
         data.events.forEach((event) => {
-          this.renderEvent(event);
+          this.renderEvent(event, true);
         });
       }
 
@@ -1358,6 +1465,7 @@ class CerberusClient {
     const wsUrl = `${protocol}//${window.location.host}/ws/${this.sessionId}`;
 
     this.ws = new WebSocket(wsUrl);
+    this.manualClose = false;
 
     this.ws.onopen = () => {
       this.isConnected = true;
@@ -1381,7 +1489,9 @@ class CerberusClient {
       this.isConnected = false;
       this.updateConnectionStatus(false);
       this.logEvent("WebSocket disconnected", "error");
-      setTimeout(() => this.connectWebSocket(), 3000);
+      if (!this.manualClose) {
+        setTimeout(() => this.connectWebSocket(), 3000);
+      }
     };
   }
 
@@ -1393,6 +1503,7 @@ class CerberusClient {
       text: text,
       mode: this.currentMode,
       message_type: this.currentMessageType,
+      approval_required: this.approvalRequired,
     };
 
     // In direct mode, specify which agent to talk to
@@ -1403,7 +1514,7 @@ class CerberusClient {
     const command = {
       command: "send_message",
       session_id: this.sessionId,
-      thread_id: this.threadId,
+      thread_id: this.getCurrentThreadId(),
       payload: payload,
     };
 
@@ -1415,19 +1526,33 @@ class CerberusClient {
     }
     this.elements.messageInput.value = "";
     this.elements.sendBtn.disabled = true;
+    this.pendingAgents.clear();
+    this.awaitingConferenceCompletion = this.currentMode === "conference";
 
     // Show typing indicators
     if (this.currentMode === "conference") {
+      this.pendingAgents.add("sarah");
+      this.pendingAgents.add("claude");
       if (!this.mutedAgents.sarah) this.addTypingIndicator("sarah");
       if (!this.mutedAgents.claude) this.addTypingIndicator("claude");
     } else {
       const target = payload.target;
+      this.pendingAgents.add(target);
       if (!this.mutedAgents[target]) this.addTypingIndicator(target);
     }
   }
 
-  renderEvent(event) {
-    const { source, payload, timestamp } = event;
+  renderEvent(event, fromHistory = false) {
+    if (event.thread_id && event.thread_id !== this.getCurrentThreadId()) {
+      return;
+    }
+
+    const source = event.source || {
+      id: event.source_id,
+      label: event.source_label,
+    };
+    const payload = event.payload || {};
+    const timestamp = event.timestamp;
 
     const senderMap = {
       matthew: { name: "Matthew", id: "operator" },
@@ -1440,6 +1565,10 @@ class CerberusClient {
       name: source.label || source.id,
       id: "system",
     };
+
+    if (!fromHistory) {
+      this.resolvePendingAgent(sender.id);
+    }
 
     // Check if muted
     if ((sender.id === "sarah" && this.mutedAgents.sarah) ||
@@ -1457,12 +1586,6 @@ class CerberusClient {
     }
 
     if (!messageText) return;
-
-    // Remove typing indicator for this sender
-    const typingId = `typing-${sender.id}`;
-    const typingEl = document.getElementById(typingId);
-    if (typingEl) typingEl.remove();
-    delete this.typingIndicators[sender.id];
 
     // Create message element
     const messageEl = document.createElement("div");
@@ -1490,6 +1613,20 @@ class CerberusClient {
     header.appendChild(senderName);
     header.appendChild(timeEl);
 
+    if (!fromHistory && this.approvalRequired && (sender.id === "sarah" || sender.id === "claude")) {
+      this.renderPendingApproval(sender, time, messageText);
+      this.messageCount++;
+      this.updateMessageCount();
+      this.logEvent(`${sender.name} response awaiting approval`, "warning");
+      if (event.meta && event.meta.mode === "conference" && event.meta.phase === "brief") {
+        this.awaitingConferenceCompletion = false;
+        if (this.pendingAgents.size === 0) {
+          this.elements.sendBtn.disabled = false;
+        }
+      }
+      return;
+    }
+
     const content = document.createElement("div");
     content.className = "message-content";
     content.textContent = messageText;
@@ -1506,7 +1643,14 @@ class CerberusClient {
         metaHtml += `<div class="meta-row"><span class="meta-label">Type:</span><span>${event.event_type}</span></div>`;
       }
       if (event.target) {
-        metaHtml += `<div class="meta-row"><span class="meta-label">Target:</span><span>${event.target}</span></div>`;
+        const targetLabel = typeof event.target === "string"
+          ? event.target
+          : (event.target.label || event.target.id || "");
+        metaHtml += `<div class="meta-row"><span class="meta-label">Target:</span><span>${targetLabel}</span></div>`;
+      }
+      const messageType = payload.message_type || (event.meta && event.meta.message_type);
+      if (messageType) {
+        metaHtml += `<div class="meta-row"><span class="meta-label">Message:</span><span>${messageType}</span></div>`;
       }
       if (event.event_id) {
         metaHtml += `<div class="meta-row"><span class="meta-label">ID:</span><span>${event.event_id.slice(-8)}</span></div>`;
@@ -1520,8 +1664,12 @@ class CerberusClient {
     this.messageCount++;
     this.updateMessageCount();
     this.logEvent(`${sender.name} responded`, "info");
-
-    this.elements.sendBtn.disabled = false;
+    if (!fromHistory && event.meta && event.meta.mode === "conference" && event.meta.phase === "brief") {
+      this.awaitingConferenceCompletion = false;
+      if (this.pendingAgents.size === 0) {
+        this.elements.sendBtn.disabled = false;
+      }
+    }
   }
 
   addTypingIndicator(sender) {
@@ -1569,6 +1717,8 @@ class CerberusClient {
   }
 
   logEvent(text, type) {
+    if (!this.isLoggingEnabled) return;
+
     const now = new Date();
     const timeStr = now.toLocaleTimeString("en-US", {
       hour12: false,
@@ -1622,6 +1772,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   confirmBtn.addEventListener("click", () => {
     modal.style.display = "none";
+    client.manualClose = true;
     if (client.ws) client.ws.close();
     client.showToast("Session ended", "Remember to update STATUS.md for next time.", "policy");
   });
