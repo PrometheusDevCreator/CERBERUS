@@ -44,13 +44,15 @@ def create_event_envelope(
     )
 
 
-def build_history_for_agent(agent_id: str, raw_msgs: list, fallback_user_msg: str = "") -> list:
+def build_history_for_agent(agent_id: str, raw_msgs: list, fallback_user_msg: str = "", triadic: bool = True) -> list:
     """Build conversation history for a specific agent.
 
     Each API only supports 'user' and 'assistant' roles.
     - The agent's own previous messages -> role: 'assistant'
     - Everything else (operator + other agent) -> role: 'user' with speaker label
 
+    When triadic=False (single-agent direct mode), Matthew's messages
+    have no prefix since there's no ambiguity about who is speaking.
     Messages are merged where needed to maintain valid alternation.
     """
     history = []
@@ -63,7 +65,8 @@ def build_history_for_agent(agent_id: str, raw_msgs: list, fallback_user_msg: st
             labelled_text = text
         elif speaker == "matthew":
             role = "user"
-            labelled_text = f"[Matthew]: {text}"
+            # In direct mode, no prefix needed — it's obviously the operator
+            labelled_text = f"[Matthew]: {text}" if triadic else text
         else:
             speaker_label = speaker.capitalize()
             role = "user"
@@ -77,7 +80,7 @@ def build_history_for_agent(agent_id: str, raw_msgs: list, fallback_user_msg: st
 
     # Ensure history ends with a user message (required by both APIs)
     if history and history[-1]["role"] != "user":
-        history.append({"role": "user", "content": f"[Matthew]: {fallback_user_msg}"})
+        history.append({"role": "user", "content": fallback_user_msg})
 
     return history
 
@@ -90,9 +93,10 @@ async def call_agent_and_persist(
     thread_id: str,
     pool: asyncpg.Pool,
     ws_manager: ConnectionManager,
+    triadic: bool = True,
 ) -> str:
     """Call an agent, persist the response, broadcast it, and return the text."""
-    history = build_history_for_agent(agent_id, raw_messages, fallback_user_msg=user_message)
+    history = build_history_for_agent(agent_id, raw_messages, fallback_user_msg=user_message, triadic=triadic)
 
     print(f"[CERBERUS] {agent_id} history: {len(history)} messages, roles: {[m['role'] for m in history]}")
 
@@ -236,6 +240,7 @@ async def handle_command(
         await call_agent_and_persist(
             "sarah", raw_messages, user_message,
             session_id, command.thread_id, pool, ws_manager,
+            triadic=False,
         )
         return
 
@@ -243,6 +248,7 @@ async def handle_command(
         await call_agent_and_persist(
             "claude", raw_messages, user_message,
             session_id, command.thread_id, pool, ws_manager,
+            triadic=False,
         )
         return
 
