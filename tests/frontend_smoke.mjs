@@ -12,6 +12,7 @@ const html = await fs.readFile(htmlPath, "utf8");
 const fetchCalls = [];
 const sentMessages = [];
 const sockets = [];
+const downloads = [];
 
 class FakeWebSocket {
   constructor(url) {
@@ -59,6 +60,11 @@ const dom = new JSDOM(html, {
 
     window.WebSocket = FakeWebSocket;
     window.console = console;
+    window.URL.createObjectURL = () => "blob:mock";
+    window.URL.revokeObjectURL = () => {};
+    window.HTMLAnchorElement.prototype.click = function click() {
+      downloads.push({ href: this.href, download: this.download });
+    };
   },
 });
 
@@ -68,8 +74,9 @@ const { document } = dom.window;
 const sendBtn = document.getElementById("sendBtn");
 const messageInput = document.getElementById("messageInput");
 const approvalToggle = document.getElementById("toggleApproval");
+const exportBtn = document.getElementById("exportBtn");
 
-assert.equal(approvalToggle.classList.contains("on"), true, "approval should default to on");
+assert.equal(approvalToggle.classList.contains("on"), false, "approval should default to off");
 
 document.querySelector('.mode-btn[data-mode="direct"]').click();
 await new Promise((resolve) => setTimeout(resolve, 10));
@@ -85,7 +92,7 @@ sendBtn.click();
 assert.equal(sentMessages.length, 1, "one websocket command should be sent");
 assert.equal(sentMessages[0].thread_id, "thr_direct_sarah");
 assert.equal(sentMessages[0].payload.target, "sarah");
-assert.equal(sentMessages[0].payload.approval_required, true);
+assert.equal(sentMessages[0].payload.approval_required, false);
 assert.equal(sendBtn.disabled, true, "send button should disable while waiting");
 
 sockets[0].emit({
@@ -111,10 +118,13 @@ sockets[0].emit({
 
 assert.equal(sendBtn.disabled, false, "agent response should release the send button");
 assert.equal(
-  document.getElementById("messageThread").textContent.includes("Pending operator approval"),
+  document.getElementById("messageThread").textContent.includes("Approved only after review"),
   true,
-  "agent responses should be gated behind approval when approval is enabled"
+  "agent responses should render directly when approval is disabled"
 );
+
+approvalToggle.click();
+assert.equal(approvalToggle.classList.contains("on"), true, "approval should become enabled when toggled");
 
 document.getElementById("muteSarah").click();
 messageInput.value = "Muted test";
@@ -131,6 +141,8 @@ sockets[0].emit({
 assert.equal(sendBtn.disabled, false, "muted responses should still clear pending state");
 
 document.getElementById("muteSarah").click();
+approvalToggle.click();
+assert.equal(approvalToggle.classList.contains("on"), false, "approval should be disabled again");
 document.querySelector('.mode-btn[data-mode="conference"]').click();
 await new Promise((resolve) => setTimeout(resolve, 10));
 messageInput.value = "Conference test";
@@ -169,6 +181,16 @@ sockets[0].emit({
   meta: { mode: "conference", phase: "brief", conference_step: 9, conference_total_steps: 9 },
 });
 assert.equal(sendBtn.disabled, false, "conference should unlock only after Sarah's final brief");
+
+exportBtn.click();
+await new Promise((resolve) => setTimeout(resolve, 10));
+assert.equal(
+  fetchCalls.at(-1).url.includes("thread_id=thr_main") && fetchCalls.at(-1).url.includes("limit=5000"),
+  true,
+  "export should fetch the active thread with a large limit"
+);
+assert.equal(downloads.length, 1, "export should trigger a download");
+assert.equal(downloads[0].download.startsWith("cerberus-conference-"), true, "export filename should reflect the current view");
 
 document.getElementById("sessionEndConfirm").click();
 await new Promise((resolve) => setTimeout(resolve, 20));

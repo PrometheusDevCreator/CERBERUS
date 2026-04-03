@@ -12,6 +12,12 @@ from app.models import ClientCommand, EventEnvelope, Source, Target
 from app.ws_manager import ConnectionManager
 
 CONFERENCE_ROUNDS = 3
+RESPONSE_DISCIPLINE = (
+    "[Response Discipline]: Be concise unless Matthew explicitly asks for depth. "
+    "Receipts must be one short sentence. Direct replies should usually stay within 2-4 sentences. "
+    "Conference discussion turns should stay within 3 short points or roughly 120 words. "
+    "Final briefs should stay within 4 short lines."
+)
 
 
 def create_event_envelope(
@@ -105,6 +111,11 @@ def build_history_for_agent(
             history[-1]["content"] += f"\n\n{memory_context}"
         else:
             history.append({"role": "user", "content": memory_context})
+
+    if history and history[-1]["role"] == "user":
+        history[-1]["content"] += f"\n\n{RESPONSE_DISCIPLINE}"
+    else:
+        history.append({"role": "user", "content": RESPONSE_DISCIPLINE})
 
     if guidance:
         guidance_text = f"[Conference Controller]: {guidance}"
@@ -282,7 +293,7 @@ async def run_conference(
         build_history_for_agent(
             "sarah",
             raw_messages,
-            "Conference mode. Step 1. Give a brief receipt confirmation only. One sentence. No analysis yet.",
+            "Conference mode. Step 1. Give a brief receipt confirmation only. One sentence. No analysis. No extra context.",
             memory_context=memory_context,
         ),
     )
@@ -304,7 +315,7 @@ async def run_conference(
         build_history_for_agent(
             "claude",
             raw_messages,
-            "Conference mode. Step 2. Give a brief receipt confirmation only. One sentence. No analysis yet.",
+            "Conference mode. Step 2. Give a brief receipt confirmation only. One sentence. No analysis. No extra context.",
             memory_context=memory_context,
         ),
     )
@@ -327,7 +338,7 @@ async def run_conference(
             build_history_for_agent(
                 "sarah",
                 raw_messages,
-                f"Conference mode discussion round {round_number} of {CONFERENCE_ROUNDS}. Speak first in this round. Add new substantive value only. Do not conclude the whole exchange yet.",
+                f"Conference mode discussion round {round_number} of {CONFERENCE_ROUNDS}. Speak first in this round. Add new substantive value only. No recap. No conclusion yet. Keep it short.",
                 memory_context=memory_context,
             ),
         )
@@ -355,7 +366,7 @@ async def run_conference(
             build_history_for_agent(
                 "claude",
                 raw_messages,
-                f"Conference mode discussion round {round_number} of {CONFERENCE_ROUNDS}. Respond after Sarah. Add new substantive value only. Do not conclude the whole exchange yet.",
+                f"Conference mode discussion round {round_number} of {CONFERENCE_ROUNDS}. Respond after Sarah. Add new substantive value only. No recap. No conclusion yet. Keep it short.",
                 memory_context=memory_context,
             ),
         )
@@ -383,7 +394,7 @@ async def run_conference(
         build_history_for_agent(
             "sarah",
             raw_messages,
-            "Conference mode final brief. Conclude for Matthew. State recommendation, disagreement if any, risks if any, and any approval or decision required. Keep it concise.",
+            "Conference mode final brief. Conclude for Matthew. State recommendation, disagreement if any, risks if any, and any approval or decision required. Maximum 4 short lines.",
             memory_context=memory_context,
         ),
     )

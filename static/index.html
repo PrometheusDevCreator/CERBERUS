@@ -994,7 +994,7 @@ html, body {
         <div class="panel-section-title">Governance</div>
         <div class="toggle-row">
           <span class="toggle-label">Require Approval</span>
-          <div class="toggle-switch on" id="toggleApproval"></div>
+          <div class="toggle-switch" id="toggleApproval"></div>
         </div>
         <div class="toggle-row">
           <span class="toggle-label">Transcript Logging</span>
@@ -1036,6 +1036,7 @@ html, body {
         <div class="panel-section-title">Session</div>
         <div class="session-controls">
           <button class="session-btn pause" id="pauseBtn">Pause Session</button>
+          <button class="session-btn" id="exportBtn">Export Chat</button>
           <button class="session-btn terminate" id="terminateBtn">Terminate</button>
         </div>
       </div>
@@ -1204,7 +1205,7 @@ class CerberusClient {
     this.messageCount = 0;
     this.currentMode = "conference";
     this.currentMessageType = "query";
-    this.approvalRequired = true;
+    this.approvalRequired = false;
     this.isConnected = false;
     this.isPaused = false;
     this.isLoggingEnabled = true;
@@ -1230,11 +1231,11 @@ class CerberusClient {
       memoryMsgCount: document.getElementById("memoryMsgCount"),
       eventLog: document.getElementById("eventLog"),
       pauseBtn: document.getElementById("pauseBtn"),
+      exportBtn: document.getElementById("exportBtn"),
       muteSarah: document.getElementById("muteSarah"),
       muteClaude: document.getElementById("muteClaude"),
     };
 
-    document.getElementById("toggleApproval").classList.add("on");
     document.getElementById("toggleLogging").classList.add("on");
     this.initializeEventListeners();
     this.initializeSession();
@@ -1249,6 +1250,13 @@ class CerberusClient {
       return `thr_direct_${this.getCurrentTarget()}`;
     }
     return "thr_main";
+  }
+
+  getCurrentConversationLabel() {
+    if (this.currentMode === "direct") {
+      return `direct-${this.getCurrentTarget()}`;
+    }
+    return "conference";
   }
 
   async switchConversationView() {
@@ -1300,9 +1308,16 @@ class CerberusClient {
       <span class="message-time">${timestamp}</span>
     `;
 
+    const pendingLabel = document.createElement("div");
+    pendingLabel.className = "message-content";
+    pendingLabel.style.fontSize = "12px";
+    pendingLabel.style.opacity = "0.7";
+    pendingLabel.style.marginBottom = "6px";
+    pendingLabel.textContent = "[Awaiting operator approval]";
+
     const content = document.createElement("div");
     content.className = "message-content";
-    content.innerHTML = "[Pending operator approval]";
+    content.textContent = messageText;
 
     const actions = document.createElement("div");
     actions.style.marginTop = "8px";
@@ -1322,7 +1337,7 @@ class CerberusClient {
     rejectBtn.textContent = "Reject";
 
     approveBtn.addEventListener("click", () => {
-      content.textContent = messageText;
+      pendingLabel.remove();
       actions.remove();
       this.logEvent(`${sender.name} response approved`, "warning");
     });
@@ -1335,9 +1350,71 @@ class CerberusClient {
     actions.appendChild(approveBtn);
     actions.appendChild(rejectBtn);
     messageEl.appendChild(header);
+    messageEl.appendChild(pendingLabel);
     messageEl.appendChild(content);
     messageEl.appendChild(actions);
     this.elements.messageThread.appendChild(messageEl);
+  }
+
+  async exportChat() {
+    try {
+      const threadId = this.getCurrentThreadId();
+      const response = await fetch(
+        `/api/sessions/${this.sessionId}/events?thread_id=${threadId}&limit=5000`
+      );
+      const data = await response.json();
+      const transcript = this.formatTranscript(data.events || []);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `cerberus-${this.getCurrentConversationLabel()}-${timestamp}.md`;
+      this.downloadTextFile(filename, transcript);
+      this.logEvent(`Exported ${this.getCurrentConversationLabel()} chat`, "info");
+    } catch (error) {
+      console.error("Failed to export chat:", error);
+      this.logEvent("Failed to export chat", "error");
+    }
+  }
+
+  formatTranscript(events) {
+    const header = [
+      "# CERBERUS Chat Export",
+      "",
+      `- Session: ${this.sessionId}`,
+      `- View: ${this.getCurrentConversationLabel()}`,
+      `- Exported: ${new Date().toISOString()}`,
+      "",
+    ];
+
+    const lines = events.map((event) => {
+      const source = event.source || {};
+      const sender = source.label || source.id || "Unknown";
+      const payload = event.payload || {};
+      const content = payload.content || [];
+      let messageText = "";
+
+      if (Array.isArray(content) && content.length > 0) {
+        messageText = content.map((item) => item.text || String(item)).join("\n");
+      } else if (typeof content === "string") {
+        messageText = content;
+      }
+
+      const timestamp = event.timestamp || "";
+      const messageType = payload.message_type || "";
+      return `## ${sender} ${messageType ? `(${messageType})` : ""}\n${timestamp}\n\n${messageText}\n`;
+    });
+
+    return header.concat(lines).join("\n");
+  }
+
+  downloadTextFile(filename, content) {
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   }
 
   initializeEventListeners() {
@@ -1385,6 +1462,10 @@ class CerberusClient {
     this.elements.pauseBtn.addEventListener("click", () => {
       this.isPaused = !this.isPaused;
       this.elements.pauseBtn.classList.toggle("active");
+    });
+
+    this.elements.exportBtn.addEventListener("click", () => {
+      this.exportChat();
     });
 
     // Mute buttons
