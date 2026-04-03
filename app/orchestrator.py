@@ -14,9 +14,10 @@ from app.ws_manager import ConnectionManager
 CONFERENCE_ROUNDS = 3
 RESPONSE_DISCIPLINE = (
     "[Response Discipline]: Be concise unless Matthew explicitly asks for depth. "
-    "Receipts must be one short sentence. Direct replies should usually stay within 2-4 sentences. "
-    "Conference discussion turns should stay within 3 short points or roughly 120 words. "
-    "Final briefs should stay within 4 short lines."
+    "Do not prefix your reply with your own name. "
+    "Receipts must be one short sentence. Direct replies should usually stay within 2-3 sentences. "
+    "Conference discussion turns should stay within 2 short sentences or roughly 80 words. "
+    "Final briefs should stay within 3 short lines."
 )
 
 
@@ -338,7 +339,7 @@ async def run_conference(
             build_history_for_agent(
                 "sarah",
                 raw_messages,
-                f"Conference mode discussion round {round_number} of {CONFERENCE_ROUNDS}. Speak first in this round. Add new substantive value only. No recap. No conclusion yet. Keep it short.",
+                f"Conference mode discussion round {round_number} of {CONFERENCE_ROUNDS}. Speak first in this round. Add new substantive value only. No recap. No conclusion yet. Maximum 2 short sentences.",
                 memory_context=memory_context,
             ),
         )
@@ -366,7 +367,7 @@ async def run_conference(
             build_history_for_agent(
                 "claude",
                 raw_messages,
-                f"Conference mode discussion round {round_number} of {CONFERENCE_ROUNDS}. Respond after Sarah. Add new substantive value only. No recap. No conclusion yet. Keep it short.",
+                f"Conference mode discussion round {round_number} of {CONFERENCE_ROUNDS}. Respond after Sarah. Add new substantive value only. No recap. No conclusion yet. Maximum 2 short sentences.",
                 memory_context=memory_context,
             ),
         )
@@ -394,7 +395,7 @@ async def run_conference(
         build_history_for_agent(
             "sarah",
             raw_messages,
-            "Conference mode final brief. Conclude for Matthew. State recommendation, disagreement if any, risks if any, and any approval or decision required. Maximum 4 short lines.",
+            "Conference mode final brief. Conclude for Matthew. State recommendation, disagreement if any, risks if any, and any approval or decision required. Maximum 3 short lines.",
             memory_context=memory_context,
         ),
     )
