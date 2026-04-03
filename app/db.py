@@ -69,6 +69,37 @@ async def init_db():
             ON sessions(user_id)
         """)
 
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS memories (
+                memory_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                category TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                detail TEXT NOT NULL,
+                source_session_id TEXT,
+                source_event_id TEXT,
+                source_kind TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                confidence DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+                tags JSONB NOT NULL DEFAULT '[]',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_used_at TIMESTAMPTZ
+            )
+        """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memories_user_scope_status
+            ON memories(user_id, scope, status, updated_at DESC)
+        """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memories_user_summary
+            ON memories(user_id, LOWER(summary))
+        """)
+
     return pool
 
 
@@ -304,3 +335,152 @@ async def get_session(pool: asyncpg.Pool, session_id: str) -> Optional[dict]:
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM sessions WHERE session_id = $1", session_id)
     return dict(row) if row else None
+
+
+async def upsert_memory(
+    pool: asyncpg.Pool,
+    memory_id: str,
+    user_id: str,
+    scope: str,
+    category: str,
+    summary: str,
+    detail: str,
+    source_session_id: str,
+    source_event_id: str,
+    source_kind: str,
+    source_id: str,
+    tags: Optional[List[str]] = None,
+):
+    """Insert or refresh an approved cross-session memory."""
+    tags = tags or []
+
+    async with pool.acquire() as conn:
+        existing_id = await conn.fetchval(
+            """
+            SELECT memory_id
+            FROM memories
+            WHERE user_id = $1
+              AND scope = $2
+              AND status = 'active'
+              AND LOWER(summary) = LOWER($3)
+            LIMIT 1
+            """,
+            user_id,
+            scope,
+            summary,
+        )
+
+        if existing_id:
+            await conn.execute(
+                """
+                UPDATE memories
+                SET category = $2,
+                    detail = $3,
+                    source_session_id = $4,
+                    source_event_id = $5,
+                    source_kind = $6,
+                    source_id = $7,
+                    tags = $8,
+                    updated_at = NOW()
+                WHERE memory_id = $1
+                """,
+                existing_id,
+                category,
+                detail,
+                source_session_id,
+                source_event_id,
+                source_kind,
+                source_id,
+                json.dumps(tags),
+            )
+            return existing_id
+
+        await conn.execute(
+            """
+            INSERT INTO memories (
+                memory_id, user_id, scope, category, summary, detail,
+                source_session_id, source_event_id, source_kind, source_id,
+                tags
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6,
+                $7, $8, $9, $10,
+                $11
+            )
+            """,
+            memory_id,
+            user_id,
+            scope,
+            category,
+            summary,
+            detail,
+            source_session_id,
+            source_event_id,
+            source_kind,
+            source_id,
+            json.dumps(tags),
+        )
+        return memory_id
+
+
+async def get_memories(
+    pool: asyncpg.Pool,
+    user_id: str,
+    scopes: Optional[List[str]] = None,
+    limit: int = 20,
+) -> List[dict]:
+    """Fetch active memories for a user."""
+    async with pool.acquire() as conn:
+        if scopes:
+            rows = await conn.fetch(
+                """
+                SELECT *
+                FROM memories
+                WHERE user_id = $1
+                  AND status = 'active'
+                  AND scope = ANY($2::text[])
+                ORDER BY updated_at DESC
+                LIMIT $3
+                """,
+                user_id,
+                scopes,
+                limit,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT *
+                FROM memories
+                WHERE user_id = $1
+                  AND status = 'active'
+                ORDER BY updated_at DESC
+                LIMIT $2
+                """,
+                user_id,
+                limit,
+            )
+
+    memories = []
+    for row in rows:
+        memory = dict(row)
+        tags = memory.get("tags", [])
+        if isinstance(tags, str):
+            tags = json.loads(tags)
+        memory["tags"] = tags
+        memories.append(memory)
+    return memories
+
+
+async def mark_memories_used(pool: asyncpg.Pool, memory_ids: List[str]) -> None:
+    """Track when memories were injected into a prompt."""
+    if not memory_ids:
+        return
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE memories
+            SET last_used_at = NOW()
+            WHERE memory_id = ANY($1::text[])
+            """,
+            memory_ids,
+        )

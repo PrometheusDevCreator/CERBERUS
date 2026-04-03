@@ -6,7 +6,8 @@ import asyncpg
 from ulid import ULID
 
 from app.agents import call_claude, call_sarah
-from app.db import get_events, insert_event_record
+from app.db import get_events, get_memories, insert_event_record, mark_memories_used, upsert_memory
+from app.memory import detect_scope, extract_memory_candidate, format_memory_context, rank_memories
 from app.models import ClientCommand, EventEnvelope, Source, Target
 from app.ws_manager import ConnectionManager
 
@@ -74,7 +75,12 @@ def parse_events_to_raw_messages(events: list) -> list:
     return raw
 
 
-def build_history_for_agent(agent_id: str, raw_msgs: list, guidance: Optional[str] = None) -> list:
+def build_history_for_agent(
+    agent_id: str,
+    raw_msgs: list,
+    guidance: Optional[str] = None,
+    memory_context: Optional[str] = None,
+) -> list:
     """Build API-compatible conversation history for an agent."""
     history = []
     for msg in raw_msgs:
@@ -93,6 +99,12 @@ def build_history_for_agent(agent_id: str, raw_msgs: list, guidance: Optional[st
             history[-1]["content"] += f"\n\n{content}"
         else:
             history.append({"role": role, "content": content})
+
+    if memory_context:
+        if history and history[-1]["role"] == "user":
+            history[-1]["content"] += f"\n\n{memory_context}"
+        else:
+            history.append({"role": "user", "content": memory_context})
 
     if guidance:
         guidance_text = f"[Conference Controller]: {guidance}"
@@ -205,10 +217,59 @@ async def call_agent(agent_id: str, history: list) -> str:
     return await call_claude(history)
 
 
+async def load_memory_context(pool: asyncpg.Pool, user_id: str, current_text: str) -> tuple[Optional[str], list]:
+    """Load relevant approved memories for the current turn."""
+    current_scope = detect_scope(current_text)
+    scopes = ["global"]
+    if current_scope != "global":
+        scopes.append(current_scope)
+
+    memories = await get_memories(pool, user_id=user_id, scopes=scopes, limit=25)
+    selected = rank_memories(memories, current_text=current_text, current_scope=current_scope, limit=5)
+    memory_context = format_memory_context(selected)
+
+    if selected:
+        await mark_memories_used(pool, [memory["memory_id"] for memory in selected])
+
+    return memory_context, selected
+
+
+async def maybe_persist_memory(
+    pool: asyncpg.Pool,
+    session_id: str,
+    operator_event: EventEnvelope,
+    user_id: str,
+    message_text: str,
+    message_type: str,
+) -> Optional[str]:
+    """Persist a conservative approved memory from the operator message."""
+    candidate = extract_memory_candidate(message_text, message_type)
+    if not candidate:
+        return None
+
+    memory_id = f"mem_{ULID()}"
+    await upsert_memory(
+        pool=pool,
+        memory_id=memory_id,
+        user_id=user_id,
+        scope=candidate["scope"],
+        category=candidate["category"],
+        summary=candidate["summary"],
+        detail=candidate["detail"],
+        source_session_id=session_id,
+        source_event_id=operator_event.event_id,
+        source_kind=operator_event.source.kind,
+        source_id=operator_event.source.id,
+        tags=candidate["tags"],
+    )
+    return candidate["summary"]
+
+
 async def run_conference(
     session_id: str,
     thread_id: str,
     raw_messages: list,
+    memory_context: Optional[str],
     pool: asyncpg.Pool,
     ws_manager: ConnectionManager,
 ):
@@ -222,6 +283,7 @@ async def run_conference(
             "sarah",
             raw_messages,
             "Conference mode. Step 1. Give a brief receipt confirmation only. One sentence. No analysis yet.",
+            memory_context=memory_context,
         ),
     )
     await persist_and_broadcast(
@@ -243,6 +305,7 @@ async def run_conference(
             "claude",
             raw_messages,
             "Conference mode. Step 2. Give a brief receipt confirmation only. One sentence. No analysis yet.",
+            memory_context=memory_context,
         ),
     )
     await persist_and_broadcast(
@@ -265,6 +328,7 @@ async def run_conference(
                 "sarah",
                 raw_messages,
                 f"Conference mode discussion round {round_number} of {CONFERENCE_ROUNDS}. Speak first in this round. Add new substantive value only. Do not conclude the whole exchange yet.",
+                memory_context=memory_context,
             ),
         )
         await persist_and_broadcast(
@@ -292,6 +356,7 @@ async def run_conference(
                 "claude",
                 raw_messages,
                 f"Conference mode discussion round {round_number} of {CONFERENCE_ROUNDS}. Respond after Sarah. Add new substantive value only. Do not conclude the whole exchange yet.",
+                memory_context=memory_context,
             ),
         )
         await persist_and_broadcast(
@@ -319,6 +384,7 @@ async def run_conference(
             "sarah",
             raw_messages,
             "Conference mode final brief. Conclude for Matthew. State recommendation, disagreement if any, risks if any, and any approval or decision required. Keep it concise.",
+            memory_context=memory_context,
         ),
     )
     await persist_and_broadcast(
@@ -366,15 +432,28 @@ async def handle_command(
         meta={"message_type": message_type, "mode": mode},
     )
     await ws_manager.broadcast(session_id, operator_event.model_dump())
+    await maybe_persist_memory(
+        pool=pool,
+        session_id=session_id,
+        operator_event=operator_event,
+        user_id="matthew",
+        message_text=user_message,
+        message_type=message_type,
+    )
 
     events = await get_events(pool, session_id, command.thread_id, limit=50)
     raw_messages = parse_events_to_raw_messages(events)
+    memory_context, _ = await load_memory_context(
+        pool,
+        user_id="matthew",
+        current_text=f"{user_message} {mode} {command.thread_id} {target}",
+    )
 
     if mode == "conference":
-        await run_conference(session_id, command.thread_id, raw_messages, pool, ws_manager)
+        await run_conference(session_id, command.thread_id, raw_messages, memory_context, pool, ws_manager)
         return
 
-    primary_history = build_history_for_agent(target, raw_messages)
+    primary_history = build_history_for_agent(target, raw_messages, memory_context=memory_context)
     primary_response = await call_agent(target, primary_history)
     await persist_and_broadcast(
         target,

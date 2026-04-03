@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.main import get_session_events
+from app.main import get_memory_entries, get_session_events
 from app.models import ClientCommand, CommandPayload
 from app.orchestrator import handle_command, parse_events_to_raw_messages
 
@@ -21,12 +21,16 @@ from app.orchestrator import handle_command, parse_events_to_raw_messages
 class FakeConnection:
     def __init__(self):
         self.events = []
+        self.memories = []
 
     @asynccontextmanager
     async def transaction(self):
         yield self
 
     async def execute(self, query, *args):
+        if "CREATE TABLE" in query or "CREATE INDEX" in query or "pg_advisory_xact_lock" in query:
+            return
+
         if "INSERT INTO events" in query:
             self.events.append(
                 {
@@ -51,26 +55,100 @@ class FakeConnection:
                     "meta": args[18],
                 }
             )
+            return
+
+        if "INSERT INTO memories" in query:
+            self.memories.append(
+                {
+                    "memory_id": args[0],
+                    "user_id": args[1],
+                    "scope": args[2],
+                    "category": args[3],
+                    "summary": args[4],
+                    "detail": args[5],
+                    "source_session_id": args[6],
+                    "source_event_id": args[7],
+                    "source_kind": args[8],
+                    "source_id": args[9],
+                    "tags": args[10],
+                    "status": "active",
+                    "created_at": "2026-04-03T00:00:00+00:00",
+                    "updated_at": "2026-04-03T00:00:00+00:00",
+                    "last_used_at": None,
+                }
+            )
+            return
+
+        if "UPDATE memories" in query and "WHERE memory_id = $1" in query:
+            memory_id = args[0]
+            for memory in self.memories:
+                if memory["memory_id"] == memory_id:
+                    memory["category"] = args[1]
+                    memory["detail"] = args[2]
+                    memory["source_session_id"] = args[3]
+                    memory["source_event_id"] = args[4]
+                    memory["source_kind"] = args[5]
+                    memory["source_id"] = args[6]
+                    memory["tags"] = args[7]
+                    memory["updated_at"] = "2026-04-03T00:00:01+00:00"
+                    return
+
+        if "UPDATE memories" in query and "last_used_at = NOW()" in query:
+            memory_ids = set(args[0])
+            for memory in self.memories:
+                if memory["memory_id"] in memory_ids:
+                    memory["last_used_at"] = "2026-04-03T00:00:02+00:00"
 
     async def fetchval(self, query, *args):
         if "MAX(sequence)" in query:
             session_id = args[0]
             sequences = [event["sequence"] for event in self.events if event["session_id"] == session_id]
             return (max(sequences) + 1) if sequences else 0
+
+        if "SELECT memory_id" in query:
+            user_id, scope, summary = args
+            summary = summary.lower()
+            for memory in self.memories:
+                if (
+                    memory["user_id"] == user_id
+                    and memory["scope"] == scope
+                    and memory["status"] == "active"
+                    and memory["summary"].lower() == summary
+                ):
+                    return memory["memory_id"]
         return None
 
     async def fetch(self, query, *args):
-        session_id = args[0]
-        if len(args) == 3:
-            thread_id = args[1]
-            limit = args[2]
-            rows = [event for event in self.events if event["session_id"] == session_id and event["thread_id"] == thread_id]
-        else:
-            limit = args[1]
-            rows = [event for event in self.events if event["session_id"] == session_id]
+        if "FROM events" in query:
+            session_id = args[0]
+            if len(args) == 3:
+                thread_id = args[1]
+                limit = args[2]
+                rows = [event for event in self.events if event["session_id"] == session_id and event["thread_id"] == thread_id]
+            else:
+                limit = args[1]
+                rows = [event for event in self.events if event["session_id"] == session_id]
 
-        rows = sorted(rows, key=lambda event: event["sequence"], reverse=True)[:limit]
-        return list(reversed(rows))
+            rows = sorted(rows, key=lambda event: event["sequence"], reverse=True)[:limit]
+            return list(reversed(rows))
+
+        if "FROM memories" in query:
+            user_id = args[0]
+            if len(args) == 3:
+                scopes = set(args[1])
+                limit = args[2]
+                rows = [
+                    memory for memory in self.memories
+                    if memory["user_id"] == user_id and memory["status"] == "active" and memory["scope"] in scopes
+                ]
+            else:
+                limit = args[1]
+                rows = [memory for memory in self.memories if memory["user_id"] == user_id and memory["status"] == "active"]
+
+            rows = sorted(rows, key=lambda memory: memory["updated_at"], reverse=True)[:limit]
+            return rows
+
+        return []
 
 
 class FakeAcquire:
@@ -212,6 +290,102 @@ class BackendSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event["source"]["id"], "matthew")
         self.assertEqual(event["target"]["id"], "sarah")
         self.assertEqual(event["payload"]["content"][0]["text"], "Hello")
+
+    async def test_operator_memory_persists_and_is_injected_across_sessions(self):
+        pool = FakePool()
+        ws_manager = FakeWSManager()
+
+        remember_command = ClientCommand(
+            command="send_message",
+            session_id="ses_memory_a",
+            thread_id="thr_direct_sarah",
+            payload=CommandPayload(
+                text="Remember: default to conference mode when both agents are needed.",
+                mode="direct",
+                target="sarah",
+                message_type="instruction",
+            ),
+        )
+
+        with patch("app.orchestrator.call_sarah", return_value="Stored"):
+            await handle_command(remember_command, "ses_memory_a", pool, ws_manager)
+
+        self.assertEqual(len(pool.conn.memories), 1)
+        self.assertEqual(pool.conn.memories[0]["scope"], "cerberus")
+
+        captured_histories = []
+
+        async def fake_sarah(history):
+            captured_histories.append(history)
+            return "Using memory"
+
+        recall_command = ClientCommand(
+            command="send_message",
+            session_id="ses_memory_b",
+            thread_id="thr_direct_sarah",
+            payload=CommandPayload(
+                text="How should I route a task that needs both agents?",
+                mode="direct",
+                target="sarah",
+                message_type="query",
+            ),
+        )
+
+        with patch("app.orchestrator.call_sarah", side_effect=fake_sarah):
+            await handle_command(recall_command, "ses_memory_b", pool, ws_manager)
+
+        rendered_history = "\n".join(item["content"] for item in captured_histories[0])
+        self.assertIn("[Persistent Memory]", rendered_history)
+        self.assertIn("default to conference mode when both agents are needed", rendered_history)
+
+    async def test_non_durable_query_does_not_create_memory(self):
+        pool = FakePool()
+        ws_manager = FakeWSManager()
+        command = ClientCommand(
+            command="send_message",
+            session_id="ses_test",
+            thread_id="thr_direct_sarah",
+            payload=CommandPayload(text="What is the current status?", mode="direct", target="sarah", message_type="query"),
+        )
+
+        with patch("app.orchestrator.call_sarah", return_value="Status reply"):
+            await handle_command(command, "ses_test", pool, ws_manager)
+
+        self.assertEqual(pool.conn.memories, [])
+
+    async def test_memory_endpoint_returns_active_entries(self):
+        pool = FakePool()
+        pool.conn.memories.append(
+            {
+                "memory_id": "mem_1",
+                "user_id": "matthew",
+                "scope": "global",
+                "category": "preference",
+                "summary": "Prefer concise replies.",
+                "detail": "Prefer concise replies.",
+                "source_session_id": "ses_a",
+                "source_event_id": "evt_a",
+                "source_kind": "user",
+                "source_id": "matthew",
+                "tags": "[]",
+                "status": "active",
+                "created_at": "2026-04-03T00:00:00+00:00",
+                "updated_at": "2026-04-03T00:00:00+00:00",
+                "last_used_at": None,
+            }
+        )
+
+        from app import main as main_module
+
+        original_pool = main_module.db_pool
+        main_module.db_pool = pool
+        try:
+            result = await get_memory_entries(user_id="matthew", scope=None, limit=10)
+        finally:
+            main_module.db_pool = original_pool
+
+        self.assertEqual(len(result["memories"]), 1)
+        self.assertEqual(result["memories"][0]["summary"], "Prefer concise replies.")
 
 
 if __name__ == "__main__":

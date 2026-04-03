@@ -11,7 +11,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from app.config import settings
-from app.db import init_db, get_events, create_session, get_session, canonicalize_event
+from app.db import init_db, get_events, create_session, get_memories, get_session, canonicalize_event
 from app.ws_manager import ConnectionManager
 from app.models import ClientCommand, CreateSessionRequest, SessionResponse
 from app.orchestrator import handle_command
@@ -74,6 +74,14 @@ async def get_session_events(session_id: str, thread_id: str = None, limit: int 
     """Fetch events for a session."""
     events = await get_events(db_pool, session_id, thread_id, limit)
     return {"events": [canonicalize_event(event) for event in events]}
+
+
+@app.get("/api/memories")
+async def get_memory_entries(user_id: str = "matthew", scope: str = None, limit: int = 20):
+    """Fetch approved persistent memories for inspection."""
+    scopes = [scope] if scope else None
+    memories = await get_memories(db_pool, user_id=user_id, scopes=scopes, limit=limit)
+    return {"memories": memories}
 
 
 @app.websocket("/ws/{session_id}")

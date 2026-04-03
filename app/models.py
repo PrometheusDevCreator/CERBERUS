@@ -20,7 +20,7 @@ class MessagePayload(BaseModel):
     role: str
     content: List[dict]
     summary: Optional[str] = None
-    message_type: Optional[Literal["instruction", "query", "challenge", "response", "summary"]] = None
+    message_type: Optional[Literal["instruction", "query", "challenge", "receipt", "response", "summary"]] = None
 
 
 class EventEnvelope(BaseModel):
