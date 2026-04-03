@@ -976,9 +976,18 @@ html, body {
         <div class="panel-section-title">Communication Mode</div>
         <div class="mode-grid" id="modeGrid">
           <button class="mode-btn active" data-mode="direct">Direct</button>
-          <button class="mode-btn" data-mode="broadcast">Broadcast</button>
-          <button class="mode-btn" data-mode="structured">Structured</button>
-          <button class="mode-btn" data-mode="gated">Gated</button>
+          <button class="mode-btn" data-mode="collaborate">Collaborate</button>
+        </div>
+        <div id="collabRoundsControl" style="display:none; margin-top:8px; padding:0 2px;">
+          <label style="font-size:11px; color:var(--p-text-dim); font-family:var(--font-display);">
+            Rounds: <select id="collabRounds" style="background:var(--p-bg); color:var(--p-text); border:1px solid var(--p-border); border-radius:3px; padding:2px 6px; font-size:11px; font-family:var(--font-mono);">
+              <option value="2">2</option>
+              <option value="3" selected>3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+            </select>
+            <span style="font-size:10px; color:var(--p-text-dim); margin-left:4px;">(Sarah ↔ Claude per round)</span>
+          </label>
         </div>
       </div>
 
@@ -1260,6 +1269,9 @@ class CerberusClient {
         btn.classList.add("active");
         this.currentMode = btn.dataset.mode;
         this.elements.modeDisplay.textContent = `Mode: ${btn.dataset.mode.toUpperCase()}`;
+        // Show/hide collaboration rounds control
+        const collabControl = document.getElementById("collabRoundsControl");
+        collabControl.style.display = btn.dataset.mode === "collaborate" ? "block" : "none";
       });
     });
 
@@ -1376,19 +1388,32 @@ class CerberusClient {
     const text = this.elements.messageInput.value.trim();
     if (!text || !this.isConnected || this.isPaused) return;
 
+    const payload = {
+      text: text,
+      target: this.currentTarget,
+      message_type: this.currentMessageType,
+    };
+
+    // Add collaboration mode info
+    if (this.currentMode === "collaborate") {
+      payload.mode = "collaborate";
+      payload.rounds = parseInt(document.getElementById("collabRounds").value, 10);
+      // Force target to "both" in collaborate mode
+      payload.target = "both";
+    }
+
     const command = {
       command: "send_message",
       session_id: this.sessionId,
       thread_id: this.threadId,
-      payload: {
-        text: text,
-        target: this.currentTarget,
-        message_type: this.currentMessageType,
-      },
+      payload: payload,
     };
 
     this.ws.send(JSON.stringify(command));
-    this.logEvent(`Message sent to ${this.currentTarget}`, "info");
+    const modeLabel = this.currentMode === "collaborate"
+      ? `Collaborate (${payload.rounds} rounds)`
+      : this.currentTarget;
+    this.logEvent(`Message sent to ${modeLabel}`, "info");
     this.elements.messageInput.value = "";
     this.elements.sendBtn.disabled = true;
 
