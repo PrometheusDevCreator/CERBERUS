@@ -90,14 +90,16 @@ async def handle_command(
     # Broadcast operator message
     await ws_manager.broadcast(session_id, operator_event.dict())
 
-    # Step 2: Get conversation history
+    # Step 2: Get raw event history from the thread
     events = await get_events(pool, session_id, command.thread_id, limit=50)
-    conversation_history = []
+
+    # Parse events into a unified list with speaker attribution
+    raw_messages = []
     for event in events:
         if event["event_type"] == "message.created":
             payload = event["payload"]
             if isinstance(payload, dict):
-                role = payload.get("role", "user")
+                speaker = event.get("source_id", "unknown")
                 content = payload.get("content", [])
                 text = ""
                 if isinstance(content, list) and len(content) > 0:
@@ -108,16 +110,56 @@ async def handle_command(
                 elif isinstance(content, str):
                     text = content
                 if text:
-                    conversation_history.append({"role": role, "content": text})
+                    raw_messages.append({"speaker": speaker, "text": text})
+
+    def build_history_for_agent(agent_id: str, raw_msgs: list) -> list:
+        """Build conversation history for a specific agent.
+
+        Each API only supports 'user' and 'assistant' roles.
+        - The agent's own previous messages -> role: 'assistant'
+        - Everything else (operator + other agent) -> role: 'user' with speaker label
+
+        Messages are merged where needed to maintain valid alternation.
+        """
+        history = []
+        for msg in raw_msgs:
+            speaker = msg["speaker"]
+            text = msg["text"]
+
+            if speaker == agent_id:
+                # This agent's own previous output
+                role = "assistant"
+                labelled_text = text
+            elif speaker == "matthew":
+                # Operator message
+                role = "user"
+                labelled_text = f"[Matthew]: {text}"
+            else:
+                # The other agent's message — present as user role with attribution
+                speaker_label = speaker.capitalize()
+                role = "user"
+                labelled_text = f"[{speaker_label}]: {text}"
+
+            # Merge consecutive same-role messages to maintain valid alternation
+            if history and history[-1]["role"] == role:
+                history[-1]["content"] += f"\n\n{labelled_text}"
+            else:
+                history.append({"role": role, "content": labelled_text})
+
+        return history
 
     # Step 3: Route to agent(s)
     target = command.payload.get("target", "both")
     user_message = command.payload.get("text", "")
+    sarah_response = None
 
     if target in ["sarah", "both"]:
+        # Build Sarah's view of the conversation
+        sarah_history = build_history_for_agent("sarah", raw_messages)
+
         # Call Sarah
         sequence = await get_next_sequence(pool, session_id)
-        sarah_response = await call_sarah(user_message, conversation_history)
+        sarah_response = await call_sarah(user_message, sarah_history)
 
         sarah_event = create_event_envelope(
             session_id=session_id,
@@ -158,14 +200,17 @@ async def handle_command(
 
         await ws_manager.broadcast(session_id, sarah_event.dict())
 
-        # Update conversation history for next agent
-        conversation_history.append({"role": "user", "content": user_message})
-        conversation_history.append({"role": "assistant", "content": sarah_response})
-
     if target in ["claude", "both"]:
+        # Build Claude's view — include Sarah's response from this turn if available
+        claude_raw = raw_messages.copy()
+        if sarah_response:
+            claude_raw.append({"speaker": "sarah", "text": sarah_response})
+
+        claude_history = build_history_for_agent("claude", claude_raw)
+
         # Call Claude
         sequence = await get_next_sequence(pool, session_id)
-        claude_response = await call_claude(user_message, conversation_history)
+        claude_response = await call_claude(user_message, claude_history)
 
         claude_event = create_event_envelope(
             session_id=session_id,
