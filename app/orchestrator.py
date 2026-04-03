@@ -255,8 +255,22 @@ async def handle_command(
         )
         print(f"[CERBERUS] Collaboration mode: {rounds} rounds")
 
+        # Inject collaboration framing so agents know what's expected
+        collab_frame = (
+            f"[CERBERUS System]: You are now in a collaborative discussion with the other agent. "
+            f"This will run for {rounds} rounds. Do not just acknowledge — work the problem. "
+            f"Propose ideas, analyse, challenge, and build on what the other agent says. "
+            f"Matthew is observing but will not intervene between rounds. Go."
+        )
+        raw_messages.append({"speaker": "matthew", "text": collab_frame})
+
         for round_num in range(rounds):
             print(f"[CERBERUS] Collaboration round {round_num + 1}/{rounds}")
+
+            # Inject round marker for context (not persisted, just in-memory)
+            if round_num > 0:
+                round_marker = f"[CERBERUS System]: Round {round_num + 1} of {rounds}. Continue working the problem. Build on what's been said — don't repeat."
+                raw_messages.append({"speaker": "matthew", "text": round_marker})
 
             # Sarah's turn
             sarah_response = await call_agent_and_persist(
