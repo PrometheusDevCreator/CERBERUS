@@ -1176,6 +1176,24 @@ html, body {
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
 
+<!-- Session End Reminder Modal -->
+<div id="sessionEndModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; display:none; align-items:center; justify-content:center;">
+  <div style="background:var(--p-card); border:1px solid var(--p-border); border-radius:8px; padding:28px 32px; max-width:480px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+    <h3 style="font-family:var(--font-display); color:var(--p-primary-light); margin:0 0 12px 0; font-size:16px;">Session Ending</h3>
+    <p style="color:var(--p-text); font-size:13px; line-height:1.6; margin:0 0 16px 0;">
+      Before you go — consider asking one of the agents to summarise this session.
+      That summary should be saved as the updated <code style="color:var(--p-primary); background:var(--p-bg); padding:2px 5px; border-radius:3px;">STATUS.md</code> so context carries over to the next session.
+    </p>
+    <p style="color:var(--p-text-dim); font-size:12px; line-height:1.5; margin:0 0 20px 0;">
+      Suggested message: <em style="color:var(--p-text);">"Summarise this session — what was discussed, decided, and left open. Format it as an updated STATUS.md."</em>
+    </p>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button id="sessionEndCancel" style="font-family:var(--font-display); padding:8px 16px; background:transparent; border:1px solid var(--p-border); color:var(--p-text-dim); border-radius:4px; cursor:pointer; font-size:12px;">Go back</button>
+      <button id="sessionEndConfirm" style="font-family:var(--font-display); padding:8px 16px; background:var(--p-error); border:1px solid var(--p-error); color:#fff; border-radius:4px; cursor:pointer; font-size:12px;">End anyway</button>
+    </div>
+  </div>
+</div>
+
 <script>
 
 class CerberusClient {
@@ -1548,11 +1566,48 @@ class CerberusClient {
       this.elements.eventLog.removeChild(this.elements.eventLog.lastChild);
     }
   }
+
+  showToast(title, message, type = "info") {
+    const container = document.getElementById("toastContainer");
+    const toast = document.createElement("div");
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<div class="toast-title">${title}</div><div class="toast-body" style="font-size:12px;color:var(--p-text-dim);">${message}</div>`;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 6000);
+  }
 }
 
 // Initialize on page load
 window.addEventListener("DOMContentLoaded", () => {
-  new CerberusClient();
+  const client = new CerberusClient();
+
+  // Session end reminder — Terminate button
+  const terminateBtn = document.getElementById("terminateBtn");
+  const modal = document.getElementById("sessionEndModal");
+  const cancelBtn = document.getElementById("sessionEndCancel");
+  const confirmBtn = document.getElementById("sessionEndConfirm");
+
+  terminateBtn.addEventListener("click", () => {
+    modal.style.display = "flex";
+  });
+
+  cancelBtn.addEventListener("click", () => {
+    modal.style.display = "none";
+  });
+
+  confirmBtn.addEventListener("click", () => {
+    modal.style.display = "none";
+    if (client.ws) client.ws.close();
+    client.showToast("Session ended", "Remember to update STATUS.md for next time.", "policy");
+  });
+
+  // Browser tab close / navigate away reminder
+  window.addEventListener("beforeunload", (e) => {
+    if (client.isConnected && client.messageCount > 0) {
+      e.preventDefault();
+      e.returnValue = "Session active — have you updated STATUS.md?";
+    }
+  });
 });
 
 </script>
