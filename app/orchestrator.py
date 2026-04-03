@@ -7,10 +7,6 @@ from app.db import insert_event, get_events, get_next_sequence
 from app.agents import call_sarah, call_claude
 from app.ws_manager import ConnectionManager
 
-# Default number of collaboration rounds (Sarah → Claude = 1 round)
-DEFAULT_COLLAB_ROUNDS = 3
-MAX_COLLAB_ROUNDS = 5
-
 
 def create_event_envelope(
     session_id: str,
@@ -23,10 +19,8 @@ def create_event_envelope(
     sequence: int,
     visibility: str = "thread",
 ) -> EventEnvelope:
-    """Create an EventEnvelope with standard format."""
     event_id = f"evt_{ULID()}"
     timestamp = datetime.now(timezone.utc).isoformat()
-
     return EventEnvelope(
         event_id=event_id,
         session_id=session_id,
@@ -44,116 +38,9 @@ def create_event_envelope(
     )
 
 
-def build_history_for_agent(agent_id: str, raw_msgs: list, fallback_user_msg: str = "", triadic: bool = True) -> list:
-    """Build conversation history for a specific agent.
-
-    Each API only supports 'user' and 'assistant' roles.
-    - The agent's own previous messages -> role: 'assistant'
-    - Everything else (operator + other agent) -> role: 'user' with speaker label
-
-    When triadic=False (single-agent direct mode), Matthew's messages
-    have no prefix since there's no ambiguity about who is speaking.
-    Messages are merged where needed to maintain valid alternation.
-    """
-    history = []
-    for msg in raw_msgs:
-        speaker = msg["speaker"]
-        text = msg["text"]
-
-        if speaker == agent_id:
-            role = "assistant"
-            labelled_text = text
-        elif speaker == "matthew":
-            role = "user"
-            # In direct mode, no prefix needed — it's obviously the operator
-            labelled_text = f"[Matthew]: {text}" if triadic else text
-        else:
-            speaker_label = speaker.capitalize()
-            role = "user"
-            labelled_text = f"[{speaker_label}]: {text}"
-
-        # Merge consecutive same-role messages to maintain valid alternation
-        if history and history[-1]["role"] == role:
-            history[-1]["content"] += f"\n\n{labelled_text}"
-        else:
-            history.append({"role": role, "content": labelled_text})
-
-    # Ensure history ends with a user message (required by both APIs)
-    if history and history[-1]["role"] != "user":
-        history.append({"role": "user", "content": fallback_user_msg})
-
-    return history
-
-
-async def call_agent_and_persist(
-    agent_id: str,
-    raw_messages: list,
-    user_message: str,
-    session_id: str,
-    thread_id: str,
-    pool: asyncpg.Pool,
-    ws_manager: ConnectionManager,
-    triadic: bool = True,
-) -> str:
-    """Call an agent, persist the response, broadcast it, and return the text."""
-    history = build_history_for_agent(agent_id, raw_messages, fallback_user_msg=user_message, triadic=triadic)
-
-    print(f"[CERBERUS] {agent_id} history: {len(history)} messages, roles: {[m['role'] for m in history]}")
-
-    # Call the appropriate agent
-    if agent_id == "sarah":
-        response_text = await call_sarah(user_message, history)
-        source = Source(kind="agent", id="sarah", label="Sarah")
-    else:
-        response_text = await call_claude(user_message, history)
-        source = Source(kind="agent", id="claude", label="Claude")
-
-    # Create and persist the event
-    sequence = await get_next_sequence(pool, session_id)
-    event = create_event_envelope(
-        session_id=session_id,
-        thread_id=thread_id,
-        event_type="message.created",
-        source=source,
-        target=Target(kind="user", id="matthew", label="Matthew"),
-        status="completed",
-        payload={
-            "message_id": f"msg_{ULID()}",
-            "role": "assistant",
-            "content": [{"type": "text", "text": response_text}],
-            "summary": response_text[:100] + "..." if len(response_text) > 100 else response_text,
-        },
-        sequence=sequence,
-    )
-
-    await insert_event(
-        pool,
-        event.event_id,
-        event.session_id,
-        event.thread_id,
-        event.event_type,
-        event.source.kind,
-        event.source.id,
-        event.source.label,
-        event.target.kind if event.target else None,
-        event.target.id if event.target else None,
-        event.target.label if event.target else None,
-        event.timestamp,
-        event.sequence,
-        event.status,
-        event.visibility,
-        event.payload,
-        event.artifacts,
-        event.meta,
-    )
-
-    await ws_manager.broadcast(session_id, event.dict())
-    return response_text
-
-
 def parse_events_to_raw_messages(events: list) -> list:
-    """Parse event records into a flat list with speaker attribution."""
-    raw_messages = []
+    """Parse DB event records into a flat list: [{speaker, text}, ...]"""
+    raw = []
     for event in events:
         if event["event_type"] == "message.created":
             payload = event["payload"]
@@ -169,8 +56,95 @@ def parse_events_to_raw_messages(events: list) -> list:
                 elif isinstance(content, str):
                     text = content
                 if text:
-                    raw_messages.append({"speaker": speaker, "text": text})
-    return raw_messages
+                    raw.append({"speaker": speaker, "text": text})
+    return raw
+
+
+def build_history_for_agent(agent_id: str, raw_msgs: list) -> list:
+    """Build API-compatible conversation history for an agent.
+
+    Rules:
+    - Agent's own messages → role: assistant (no label)
+    - All other messages → role: user with [Speaker]: prefix
+    - Consecutive same-role messages are merged (API requirement)
+    - History must end with role: user
+    """
+    history = []
+    for msg in raw_msgs:
+        speaker = msg["speaker"]
+        text = msg["text"]
+
+        if speaker == agent_id:
+            role = "assistant"
+            content = text
+        else:
+            role = "user"
+            label = speaker.capitalize()
+            content = f"[{label}]: {text}"
+
+        if history and history[-1]["role"] == role:
+            history[-1]["content"] += f"\n\n{content}"
+        else:
+            history.append({"role": role, "content": content})
+
+    # Both APIs require the last message to be role: user
+    if history and history[-1]["role"] != "user":
+        # This shouldn't normally happen since Matthew's message is always last,
+        # but guard against edge cases
+        history.append({"role": "user", "content": "[Matthew]: Please continue."})
+
+    return history
+
+
+async def persist_and_broadcast(
+    agent_id: str,
+    response_text: str,
+    session_id: str,
+    thread_id: str,
+    pool: asyncpg.Pool,
+    ws_manager: ConnectionManager,
+):
+    """Persist an agent response as an event and broadcast to all clients."""
+    label = agent_id.capitalize()
+    source = Source(kind="agent", id=agent_id, label=label)
+
+    sequence = await get_next_sequence(pool, session_id)
+    event = create_event_envelope(
+        session_id=session_id,
+        thread_id=thread_id,
+        event_type="message.created",
+        source=source,
+        target=Target(kind="user", id="matthew", label="Matthew"),
+        status="completed",
+        payload={
+            "message_id": f"msg_{ULID()}",
+            "role": "assistant",
+            "content": [{"type": "text", "text": response_text}],
+            "summary": response_text[:100] + ("..." if len(response_text) > 100 else ""),
+        },
+        sequence=sequence,
+    )
+
+    await insert_event(
+        pool,
+        event.event_id, event.session_id, event.thread_id,
+        event.event_type, event.source.kind, event.source.id, event.source.label,
+        event.target.kind if event.target else None,
+        event.target.id if event.target else None,
+        event.target.label if event.target else None,
+        event.timestamp, event.sequence, event.status, event.visibility,
+        event.payload, event.artifacts, event.meta,
+    )
+
+    await ws_manager.broadcast(session_id, event.dict())
+
+
+async def call_agent(agent_id: str, history: list) -> str:
+    """Call the appropriate agent API."""
+    if agent_id == "sarah":
+        return await call_sarah(history)
+    else:
+        return await call_claude(history)
 
 
 async def handle_command(
@@ -179,12 +153,14 @@ async def handle_command(
     pool: asyncpg.Pool,
     ws_manager: ConnectionManager,
 ):
-    """Handle incoming client command and orchestrate agent responses."""
+    """Handle incoming client command."""
 
-    # Step 1: Create and persist operator's message event
-    sequence = await get_next_sequence(pool, session_id)
     user_message = command.payload.get("text", "")
+    mode = command.payload.get("mode", "conference")
+    target = command.payload.get("target", "sarah")  # only used in direct mode
 
+    # ── Persist and broadcast operator's message ──
+    sequence = await get_next_sequence(pool, session_id)
     operator_event = create_event_envelope(
         session_id=session_id,
         thread_id=command.thread_id,
@@ -203,104 +179,73 @@ async def handle_command(
 
     await insert_event(
         pool,
-        operator_event.event_id,
-        operator_event.session_id,
-        operator_event.thread_id,
-        operator_event.event_type,
-        operator_event.source.kind,
-        operator_event.source.id,
-        operator_event.source.label,
-        None,
-        None,
-        None,
-        operator_event.timestamp,
-        operator_event.sequence,
-        operator_event.status,
-        operator_event.visibility,
-        operator_event.payload,
-        operator_event.artifacts,
-        operator_event.meta,
+        operator_event.event_id, operator_event.session_id, operator_event.thread_id,
+        operator_event.event_type, operator_event.source.kind,
+        operator_event.source.id, operator_event.source.label,
+        None, None, None,
+        operator_event.timestamp, operator_event.sequence,
+        operator_event.status, operator_event.visibility,
+        operator_event.payload, operator_event.artifacts, operator_event.meta,
     )
-
-    # Broadcast operator message
     await ws_manager.broadcast(session_id, operator_event.dict())
 
-    # Step 2: Get conversation history
+    # ── Load conversation history ──
     events = await get_events(pool, session_id, command.thread_id, limit=50)
     raw_messages = parse_events_to_raw_messages(events)
 
-    print(f"[CERBERUS] raw_messages count: {len(raw_messages)}, speakers: {[m['speaker'] for m in raw_messages]}")
-
-    # Step 3: Route based on target and mode
-    target = command.payload.get("target", "both")
-    mode = command.payload.get("mode", "direct")
-
-    # ── Single-agent routing ──
-    if target == "sarah":
-        await call_agent_and_persist(
-            "sarah", raw_messages, user_message,
-            session_id, command.thread_id, pool, ws_manager,
-            triadic=False,
-        )
-        return
-
-    if target == "claude":
-        await call_agent_and_persist(
-            "claude", raw_messages, user_message,
-            session_id, command.thread_id, pool, ws_manager,
-            triadic=False,
-        )
-        return
-
-    # ── Both agents ──
-    if mode == "collaborate":
-        # Collaboration loop: agents take turns responding to each other
-        rounds = min(
-            int(command.payload.get("rounds", DEFAULT_COLLAB_ROUNDS)),
-            MAX_COLLAB_ROUNDS,
-        )
-        print(f"[CERBERUS] Collaboration mode: {rounds} rounds")
-
-        # Inject collaboration framing so agents know what's expected
-        collab_frame = (
-            f"[CERBERUS System]: You are now in a collaborative discussion with the other agent. "
-            f"This will run for {rounds} rounds. Do not just acknowledge — work the problem. "
-            f"Propose ideas, analyse, challenge, and build on what the other agent says. "
-            f"Matthew is observing but will not intervene between rounds. Go."
-        )
-        raw_messages.append({"speaker": "matthew", "text": collab_frame})
-
-        for round_num in range(rounds):
-            print(f"[CERBERUS] Collaboration round {round_num + 1}/{rounds}")
-
-            # Inject round marker for context (not persisted, just in-memory)
-            if round_num > 0:
-                round_marker = f"[CERBERUS System]: Round {round_num + 1} of {rounds}. Continue working the problem. Build on what's been said — don't repeat."
-                raw_messages.append({"speaker": "matthew", "text": round_marker})
-
-            # Sarah's turn
-            sarah_response = await call_agent_and_persist(
-                "sarah", raw_messages, user_message,
-                session_id, command.thread_id, pool, ws_manager,
-            )
-            raw_messages.append({"speaker": "sarah", "text": sarah_response})
-
-            # Claude's turn
-            claude_response = await call_agent_and_persist(
-                "claude", raw_messages, user_message,
-                session_id, command.thread_id, pool, ws_manager,
-            )
-            raw_messages.append({"speaker": "claude", "text": claude_response})
-
-    else:
-        # Standard "both" mode: Sarah first, then Claude (1 response each)
-        sarah_response = await call_agent_and_persist(
-            "sarah", raw_messages, user_message,
-            session_id, command.thread_id, pool, ws_manager,
-        )
+    # ── CONFERENCE MODE ──
+    # Both agents see everything. Both get a chance to respond.
+    # Each agent decides for itself whether to contribute based on the message content.
+    if mode == "conference":
+        # Sarah responds first
+        sarah_history = build_history_for_agent("sarah", raw_messages)
+        sarah_response = await call_agent("sarah", sarah_history)
+        await persist_and_broadcast("sarah", sarah_response, session_id, command.thread_id, pool, ws_manager)
         raw_messages.append({"speaker": "sarah", "text": sarah_response})
 
-        await call_agent_and_persist(
-            "claude", raw_messages, user_message,
-            session_id, command.thread_id, pool, ws_manager,
-        )
+        # Claude responds second, seeing Sarah's reply
+        claude_history = build_history_for_agent("claude", raw_messages)
+        claude_response = await call_agent("claude", claude_history)
+        await persist_and_broadcast("claude", claude_response, session_id, command.thread_id, pool, ws_manager)
+
+    # ── DIRECT MODE ──
+    # Only the targeted agent responds. The other agent does not see this conversation.
+    # However, if the responding agent's reply contains a request to consult the other
+    # agent, we call the other agent too (Matthew sees both, but only the primary
+    # agent continues the conversation).
+    elif mode == "direct":
+        primary = target  # "sarah" or "claude"
+        other = "claude" if primary == "sarah" else "sarah"
+
+        primary_history = build_history_for_agent(primary, raw_messages)
+        primary_response = await call_agent(primary, primary_history)
+        await persist_and_broadcast(primary, primary_response, session_id, command.thread_id, pool, ws_manager)
+
+        # Check if the primary agent is requesting the other agent's input
+        consult_triggers = [
+            f"ask {other}",
+            f"bring {other} in",
+            f"check with {other}",
+            f"get {other}'s",
+            f"@{other}",
+            f"consult {other}",
+            f"{other} should weigh in",
+            f"{other} might",
+            f"defer to {other}",
+        ]
+        response_lower = primary_response.lower()
+        should_consult = any(trigger in response_lower for trigger in consult_triggers)
+
+        if should_consult:
+            # Build history including the primary agent's response
+            raw_messages.append({"speaker": primary, "text": primary_response})
+            # Frame the consultation
+            consult_msg = (
+                f"[{primary.capitalize()}] has suggested consulting you on this. "
+                f"Here is the conversation so far. Please provide your input."
+            )
+            raw_messages.append({"speaker": "matthew", "text": consult_msg})
+
+            other_history = build_history_for_agent(other, raw_messages)
+            other_response = await call_agent(other, other_history)
+            await persist_and_broadcast(other, other_response, session_id, command.thread_id, pool, ws_manager)
