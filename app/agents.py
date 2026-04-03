@@ -82,9 +82,8 @@ CLAUDE_SYSTEM_PROMPT = _build_claude_system_prompt()
 async def call_sarah(message: str, conversation_history: List[Dict]) -> str:
     """Call OpenAI's GPT-5.4 (Sarah) with conversation history."""
     try:
-        # Build messages list
+        # conversation_history already includes the current message
         messages = conversation_history.copy()
-        messages.append({"role": "user", "content": message})
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
@@ -123,9 +122,8 @@ async def call_sarah(message: str, conversation_history: List[Dict]) -> str:
 async def call_claude(message: str, conversation_history: List[Dict]) -> str:
     """Call Anthropic's Claude Opus 4.6 with conversation history."""
     try:
-        # Build messages list
+        # conversation_history already includes the current message
         messages = conversation_history.copy()
-        messages.append({"role": "user", "content": message})
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(

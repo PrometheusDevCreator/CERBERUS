@@ -146,16 +146,24 @@ async def handle_command(
             else:
                 history.append({"role": role, "content": labelled_text})
 
+        # Ensure history ends with a user message (required by both APIs)
+        if history and history[-1]["role"] != "user":
+            history.append({"role": "user", "content": f"[Matthew]: {user_message}"})
+
         return history
 
     # Step 3: Route to agent(s)
     target = command.payload.get("target", "both")
     user_message = command.payload.get("text", "")
+
+    # Log raw message count for debugging
+    print(f"[CERBERUS] raw_messages count: {len(raw_messages)}, speakers: {[m['speaker'] for m in raw_messages]}")
     sarah_response = None
 
     if target in ["sarah", "both"]:
         # Build Sarah's view of the conversation
         sarah_history = build_history_for_agent("sarah", raw_messages)
+        print(f"[CERBERUS] Sarah history: {len(sarah_history)} messages, roles: {[m['role'] for m in sarah_history]}")
 
         # Call Sarah
         sequence = await get_next_sequence(pool, session_id)
@@ -207,6 +215,7 @@ async def handle_command(
             claude_raw.append({"speaker": "sarah", "text": sarah_response})
 
         claude_history = build_history_for_agent("claude", claude_raw)
+        print(f"[CERBERUS] Claude history: {len(claude_history)} messages, roles: {[m['role'] for m in claude_history]}")
 
         # Call Claude
         sequence = await get_next_sequence(pool, session_id)
