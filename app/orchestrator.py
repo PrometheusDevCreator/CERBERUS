@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import json
+import re
 from typing import Optional
 
 import asyncpg
@@ -18,6 +19,17 @@ RESPONSE_DISCIPLINE = (
     "Receipts must be one short sentence. Direct replies should usually stay within 2-3 sentences. "
     "Conference discussion turns should stay within 2 short sentences or roughly 80 words. "
     "Final briefs should stay within 3 short lines."
+)
+DEPTH_REQUEST_TOKENS = (
+    "detail",
+    "detailed",
+    "deep",
+    "depth",
+    "thorough",
+    "comprehensive",
+    "step-by-step",
+    "walk me through",
+    "full explanation",
 )
 
 
@@ -222,6 +234,43 @@ async def persist_and_broadcast(
     return event
 
 
+def _strip_self_prefix(text: str) -> str:
+    return re.sub(r"^\s*(?:\[(?:Sarah|Claude)\]|Sarah|Claude)\s*:\s*", "", text.strip(), flags=re.IGNORECASE)
+
+
+def _split_sentences(text: str) -> list[str]:
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _trim_to_sentences(text: str, max_sentences: int, max_chars: int) -> str:
+    sentences = _split_sentences(text)
+    trimmed = " ".join(sentences[:max_sentences]) if sentences else text.strip()
+    if len(trimmed) <= max_chars:
+        return trimmed
+
+    clipped = trimmed[: max_chars - 1].rstrip()
+    if " " in clipped:
+        clipped = clipped.rsplit(" ", 1)[0]
+    return clipped.rstrip(" ,;:-") + "…"
+
+
+def compact_agent_output(response_text: str, message_type: str, phase: Optional[str], user_message: str) -> str:
+    """Enforce sane default reply length when the operator did not ask for depth."""
+    text = _strip_self_prefix(response_text)
+    wants_depth = any(token in user_message.lower() for token in DEPTH_REQUEST_TOKENS)
+    if wants_depth:
+        return text
+
+    if message_type == "receipt" or phase == "receipt":
+        return _trim_to_sentences(text, max_sentences=1, max_chars=110)
+    if message_type == "summary" or phase == "brief":
+        return _trim_to_sentences(text, max_sentences=3, max_chars=280)
+    if phase == "discussion":
+        return _trim_to_sentences(text, max_sentences=2, max_chars=220)
+    return _trim_to_sentences(text, max_sentences=3, max_chars=320)
+
+
 async def call_agent(agent_id: str, history: list) -> str:
     """Call the appropriate agent API."""
     if agent_id == "sarah":
@@ -282,6 +331,7 @@ async def run_conference(
     thread_id: str,
     raw_messages: list,
     memory_context: Optional[str],
+    user_message: str,
     pool: asyncpg.Pool,
     ws_manager: ConnectionManager,
 ):
@@ -298,6 +348,7 @@ async def run_conference(
             memory_context=memory_context,
         ),
     )
+    sarah_receipt = compact_agent_output(sarah_receipt, "receipt", "receipt", user_message)
     await persist_and_broadcast(
         "sarah",
         sarah_receipt,
@@ -320,6 +371,7 @@ async def run_conference(
             memory_context=memory_context,
         ),
     )
+    claude_receipt = compact_agent_output(claude_receipt, "receipt", "receipt", user_message)
     await persist_and_broadcast(
         "claude",
         claude_receipt,
@@ -343,6 +395,7 @@ async def run_conference(
                 memory_context=memory_context,
             ),
         )
+        sarah_turn = compact_agent_output(sarah_turn, "response", "discussion", user_message)
         await persist_and_broadcast(
             "sarah",
             sarah_turn,
@@ -371,6 +424,7 @@ async def run_conference(
                 memory_context=memory_context,
             ),
         )
+        claude_turn = compact_agent_output(claude_turn, "response", "discussion", user_message)
         await persist_and_broadcast(
             "claude",
             claude_turn,
@@ -399,6 +453,7 @@ async def run_conference(
             memory_context=memory_context,
         ),
     )
+    sarah_brief = compact_agent_output(sarah_brief, "summary", "brief", user_message)
     await persist_and_broadcast(
         "sarah",
         sarah_brief,
@@ -462,11 +517,12 @@ async def handle_command(
     )
 
     if mode == "conference":
-        await run_conference(session_id, command.thread_id, raw_messages, memory_context, pool, ws_manager)
+        await run_conference(session_id, command.thread_id, raw_messages, memory_context, user_message, pool, ws_manager)
         return
 
     primary_history = build_history_for_agent(target, raw_messages, memory_context=memory_context)
     primary_response = await call_agent(target, primary_history)
+    primary_response = compact_agent_output(primary_response, "response", "response", user_message)
     await persist_and_broadcast(
         target,
         primary_response,
